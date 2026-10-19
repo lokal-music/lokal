@@ -1,0 +1,112 @@
+
+/* TV Mode: visible focus and comfortable controller navigation. */
+:root.lokal-tv-mode button,
+:root.lokal-tv-mode a,
+:root.lokal-tv-mode [tabindex="0"],
+:root.lokal-tv-mode input {
+  scroll-margin: 12vh;
+}
+
+:root.lokal-tv-mode button:focus-visible,
+:root.lokal-tv-mode a:focus-visible,
+:root.lokal-tv-mode [tabindex="0"]:focus-visible,
+:root.lokal-tv-mode input:focus-visible {
+  outline: 3px solid var(--accent-color, #a78bfa) !important;
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+:root.lokal-tv-mode button,
+:root.lokal-tv-mode a {
+  transition: outline-color 120ms ease, transform 120ms ease;
+}
+
+:root.lokal-tv-mode button:focus-visible,
+:root.lokal-tv-mode a:focus-visible {
+  transform: scale(1.025);
+}
+
+.lokal-tv-status {
+  position: fixed;
+  z-index: 1200;
+  left: 16px;
+  bottom: 14px;
+  pointer-events: none;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.lokal-tv-menu-trigger {
+  position: fixed;
+  z-index: 1201;
+  top: 16px;
+  right: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(20, 20, 28, 0.88);
+  color: white;
+  border-radius: 12px;
+  padding: 10px 14px;
+  backdrop-filter: blur(16px);
+}
+
+.lokal-tv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4vw;
+  background: rgba(0, 0, 0, 0.54);
+  backdrop-filter: blur(12px);
+}
+
+.lokal-tv-panel {
+  width: min(460px, 90vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  color: white;
+  background: rgba(24, 24, 32, 0.97);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.5);
+}
+
+.lokal-tv-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+
+.lokal-tv-panel nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lokal-tv-panel nav button,
+.lokal-tv-panel-head button {
+  padding: 15px;
+  text-align: left;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lokal-tv-panel nav button.selected {
+  background: rgba(139, 92, 246, 0.28);
+  border-color: #a78bfa;
+}
+
+.lokal-tv-panel p {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 20px;
+}
