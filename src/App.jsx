@@ -63,6 +63,8 @@ import ReleaseRefreshBanner from './components/ReleaseRefreshBanner'
 import { PageReadyContext, PageShownContext, PAGE_READY_TIMEOUT_MS } from './pageCache'
 import { audioSrcFor, isAddonProvider, providerLabel, streamRef } from './onlineTracks'
 import { playbackLog } from './playbackLog'
+import TvController from './tv/TvController'
+
 
 // An addon refusing because its access isn't set up (or has lapsed).
 const ADDON_ACCESS_ERROR = /VERIFY_REQUIRED|verif|log\s*in|sign\s*in|unauthori[sz]ed|not authenticated/i
@@ -3068,8 +3070,9 @@ export default function App() {
 
   return (
     <Router>
-      <NativeHistoryNavigation />
-      <KeyboardShortcuts />
+  <NativeHistoryNavigation />
+  <KeyboardShortcuts />
+  <TvController />
       <div className="relative flex flex-col h-screen bg-transparent overflow-hidden" onClick={initAudioCtx} style={showMiniPlayer || !glassPlayerBar ? undefined : { '--player-space': '104px' }}>
         {/* Covers the window (overlays included) while it switches to or from
             the mini player: the window is resized behind it, so neither view
