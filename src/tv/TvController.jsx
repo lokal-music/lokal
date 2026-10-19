@@ -161,6 +161,19 @@ export default function TvController() {
       document.documentElement.classList.remove('lokal-tv-mode')
     }
   }, [active])
+  
+    useEffect(() => {
+    const tv = window.electron?.tv
+    if (!tv) return
+
+    tv.setFullscreen(active).catch(error => {
+      console.error('TV fullscreen toggle failed:', error)
+    })
+
+    return () => {
+      tv.setFullscreen(false).catch(() => {})
+    }
+  }, [active])
 
   if (!active) return null
 
