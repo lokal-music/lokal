@@ -29,7 +29,11 @@ contextBridge.exposeInMainWorld('electron', {
   setMiniMode: (enabled) => invoke('window:setMiniMode', enabled),
   getWindowSize: () => invoke('window:getSize'),
   fitMiniHeight: (height) => invoke('window:fitMiniHeight', height),
-  refreshHitRegions: () => invoke('window:refreshHitRegions'),
+  refreshHitRegions: () => invoke('window:refreshHitRegions'), 
+  tv: {
+    setFullscreen: (enabled) => invoke('tv:setFullscreen', enabled),
+    setZoom: (factor) => invoke('tv:setZoom', factor),
+  },
   onNavigationHistory: (fn) => on('navigation:history', (_, direction) => fn(direction)),
   onWindowVisibility: (fn) => on('window:visibility', (_, hidden) => fn(!!hidden)),
   isWindowHidden: () => invoke('window:isHidden'),
