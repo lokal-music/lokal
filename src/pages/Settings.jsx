@@ -5,6 +5,7 @@ import SplitWordsSettings from '../components/SplitWordsSettings'
 import { collectLocalPrefs, restoreLocalPrefs } from '../localPrefsBackup'
 import AppTabsSettings from '../components/AppTabsSettings'
 import { APP_LANGUAGES, useTranslation } from '../i18n'
+import TvModeSettings from '../tv/TvModeSettings'
 ﻿import React, { useEffect, useLayoutEffect, useState, useRef, createContext, useContext } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -2065,7 +2066,12 @@ activeCategory === 'data' ? usersTried
         </div>
       </Section>
       )}
-
+      {inCategory('appearance') && (
+        <Section title="TV Mode">
+          <TvModeSettings />
+        </Section>
+      )}
+        
       {inCategory('appearance') && (
       <Section title={t("Now Playing")}>
         <Row label={t("Colour Background")} desc={t("Colour the side panel and full screen player from the album cover. Off: a dark background.")}>
