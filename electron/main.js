@@ -739,6 +739,25 @@ app.whenReady().then(() => {
   }
 });
 
+  
+ipcMain.handle('tv:setFullscreen', (_, enabled) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  mainWindow.setFullScreen(!!enabled)
+  return true
+})
+
+ipcMain.handle('tv:setZoom', (_, factor) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+
+  const zoom = Number(factor)
+  if (!Number.isFinite(zoom)) return false
+
+  mainWindow.webContents.setZoomFactor(
+    Math.max(0.5, Math.min(2, zoom))
+  )
+  return true
+})
+
 ipcMain.handle('window:minimize', () => mainWindow?.minimize())
 // Whether the window is minimized or hidden now, for a page that subscribes
 // to 'window:visibility' after the last change was sent.
