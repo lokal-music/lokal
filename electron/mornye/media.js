@@ -17,6 +17,15 @@ function addonAudioCache(db) {
     : path.join(service(db).root, 'audio-cache')
 }
 
+// A provider can return a persistent file under its allowed data root.
+// Only temporary files owned by the downloader may be moved into cache;
+// otherwise preserve the add-on's source by copying it.
+function isStagedAudioFile(source,stagingRoot) {
+  if(!source||!stagingRoot)return false
+  const relative=path.relative(stagingRoot,source)
+  return relative!==''&&relative!=='..'&&!relative.startsWith(`..${path.sep}`)&&!path.isAbsolute(relative)
+}
+
 const jobs = new WeakMap()
 const MIME = { flac:'audio/flac',mp3:'audio/mpeg',m4a:'audio/mp4',mp4:'audio/mp4',ogg:'audio/ogg',opus:'audio/ogg',wav:'audio/wav',webm:'audio/webm',aac:'audio/aac' }
 const redact=text=>String(text||'').replace(/(hmac|token|signature|sig|key|secret|grant|code)=([^&\s"]+)/gi,'$1=…').replace(/qbza_[\w-]+/g,'qbza_…').slice(0,500)
@@ -66,8 +75,7 @@ function prepare(db,key,id,{force=false}={}){
       // second full track before Play can start. External cache volumes need
       // the previous copy fallback (EXDEV on Linux/macOS/Windows).
       staging=`${file}.tmp`
-      const relative=path.relative(result.staging,source)
-      const isStaged=relative!==''&&relative!=='..'&&!relative.startsWith(`..${path.sep}`)&&!path.isAbsolute(relative)
+      const isStaged=isStagedAudioFile(source,result.staging)
       if(!job.live?.ready&&isStaged){
         try{await fsp.rename(source,staging)}
         catch(error){
@@ -211,4 +219,4 @@ async function fileResponse(file,{range,signal,mime='audio/*'}={}){
   const body=handle.createReadStream({start:slice.start,end:slice.end,autoClose:true,signal})
   return new Response(Readable.toWeb(body),{status:slice.status,headers})
 }
-module.exports={prepare,operation,resolve,cached,fileResponse,liveResponse,liveUpdate,rangeOf}
+module.exports={prepare,operation,resolve,cached,fileResponse,liveResponse,liveUpdate,rangeOf,isStagedAudioFile}
