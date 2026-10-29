@@ -41,11 +41,11 @@ export function tierOf(track) {
 export function atmosAvailable(track) {
   return track?.atmos_available === true || Number(track?.atmos_available) === 1 ||
     [track?.audio_mode, track?.audioMode, track?.audio_quality, track?.audioQuality]
-      .some(value => typeof value === 'string' && /^(?:DOLBY[_ -]?ATMOS|ATMOS)$/i.test(value.trim())) ||
+      .some(value => typeof value === 'string' && /^(?:DOLBY[_ -]?ATMOS|ATMOS|E[_ -]?AC[_ -]?3[_ -]?JOC|AC[_ -]?4[_ -]?ATMOS)$/i.test(value.trim())) ||
     [track?.audio_modes, track?.audioModes]
       .some(value => {
         const modes = Array.isArray(value) ? value.flatMap(v => String(v).split(/[,;|]/)) : String(value ?? '').split(/[,;|]/)
-        return modes.some(mode => /^(?:DOLBY[_ -]?ATMOS|ATMOS)$/i.test(String(mode || '').trim()))
+        return modes.some(mode => /^(?:DOLBY[_ -]?ATMOS|ATMOS|E[_ -]?AC[_ -]?3[_ -]?JOC|AC[_ -]?4[_ -]?ATMOS)$/i.test(String(mode || '').trim()))
       })
 }
 
