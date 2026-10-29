@@ -146,6 +146,23 @@ test('a package download crosses the real host, FFprobe validation, and staged c
   try { assert.equal(result.info.codec,'pcm_s16le');assert.equal(path.extname(result.file),'.wav','WAV audio written to audio.flac is rewrapped for the player');assert.equal(result.info.duration_ms,1000);assert.equal(result.metadata.album,'Fixture Album');assert.equal(result.metadata.album_name,'Fixture Album');assert.equal(result.metadata.album_artist,'Fixture Album Artist');assert.ok((await fs.stat(result.file)).size>44) } finally { await result.cleanup() }
 })
 
+test('failed optional enrichment preserves the authoritative availability reason',async t=>{
+  const {service}=await fixture(t)
+  const code=`let checks=0;
+    registerExtension({
+      initialize(){},
+      checkAvailability(){checks++;return {available:false,reason:checks===1?'Unavailable initially':'Still unavailable'};},
+      enrichTrack(){throw new Error('Optional metadata lookup unavailable');},
+      download(){throw new Error('Unreachable download stage');}
+    })`
+  const installed=await service.install({buffer:archive({...manifest,name:'tidal'},code)})
+  service.remember(installed.key,[{id:'123',name:'Song',artists:'Artist',provider_id:'tidal'}])
+  await assert.rejects(
+    service.download(installed.key,'123',{purpose:'playback'}),
+    /Still unavailable/,
+  )
+})
+
 test('native Tidal acquisition checks availability before enrichment for both Play and Save',async t=>{
   const {service}=await fixture(t)
   const wav=Buffer.alloc(44+8000*2)
