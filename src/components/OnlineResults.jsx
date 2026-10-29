@@ -323,12 +323,12 @@ export default function OnlineResults({ query, soulseekFor = null, findOn = null
                   {(advertisedQuality(item) || atmosAvailable(item)) && (
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px]" aria-label={t('Catalogue audio formats')}>
                       {advertisedQuality(item) && <span className="rounded border border-border px-1.5 py-px text-muted" title={t('Catalogue quality (actual playback format can differ)')}>{t(advertisedQuality(item))}</span>}
-                      {atmosAvailable(item) && <span className={`rounded border px-1.5 py-px font-semibold ${ATMOS_AVAILABLE.className}`} title={t('The catalogue advertises an Atmos presentation. Playback depends on the actual encoded stream and output.')}>{t('DOLBY ATMOS')}</span>}
+                      {atmosAvailable(item) && <span className={`rounded border px-1.5 py-px font-semibold ${ATMOS_AVAILABLE.className}`} title={t('The catalogue advertises an Atmos presentation. Playback depends on the actual encoded stream and output.')}>{t('Atmos')}</span>}
                     </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2.5">
-                  {atmosRequestable(item) && <AtmosPlayButton track={item} onPlay={(mode, device) => playNativeAtmos(item, i, mode, device)} />}
+                  {atmosAvailable(item) && <AtmosPlayButton track={item} onPlay={(mode, device) => playNativeAtmos(item, i, mode, device)} />}
                   <button onClick={() => addToPlaylist(item)} title={t('Add to playlist')} aria-label={t('Add {title} to a playlist', { title: item.title })}
                     className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted hover:text-accent transition-all">
                     <Plus size={15} />
