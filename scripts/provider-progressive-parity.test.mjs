@@ -124,6 +124,15 @@ test('ready Qobuz transfer survives metadata availability and remains readable',
   }
 })
 
+test('a persistent add-on file cannot be moved out of the add-on root', () => {
+  const staging=path.join(os.tmpdir(),'lokal-work','operation')
+  assert.equal(media.isStagedAudioFile(path.join(staging,'audio.flac'),staging),true)
+  assert.equal(media.isStagedAudioFile(path.join(staging,'subdir','audio.flac'),staging),true)
+  assert.equal(media.isStagedAudioFile(path.join(os.tmpdir(),'lokal-data','audio.flac'),staging),false)
+  assert.equal(media.isStagedAudioFile(path.join(staging,'..','cached.flac'),staging),false)
+  assert.equal(media.isStagedAudioFile(staging,staging),false)
+})
+
 test('failed availability permits the same bounded enrichment retry on every provider', () => {
   for (const provider of ['tidal','tidal-web','qobuz','deezer','amazon']) {
     assert.equal(shouldRetryEnrichment({
