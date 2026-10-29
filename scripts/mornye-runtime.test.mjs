@@ -71,9 +71,15 @@ test('segmented downloads preserve order despite out-of-order responses', async 
   const server=http.createServer((req,res)=>{setTimeout(()=>res.end(req.url.slice(1)),req.url==='/a'?50:5)})
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
   const base=`http://127.0.0.1:${server.address().port}`
-  const {runtime,host}=await fixture(t,`registerExtension({run(base){const r=file.downloadSegments([base+'/a',base+'/b',base+'/c'],'track.bin',{maxParallel:3,onProgress:()=>storage.set('progress',true)});return {success:r.success,body:file.read('track.bin').data,progress:storage.get('progress')};}})`)
+  const received=[]
+  const {runtime,host}=await fixture(t,`registerExtension({run(base){const r=file.downloadSegments([base+'/a',base+'/b',base+'/c'],'track.bin',{maxParallel:3,onProgress:()=>storage.set('progress',true)});return {success:r.success,body:file.read('track.bin').data,progress:storage.get('progress')};}})`,{
+    onByteProgress: bytes => received.push(bytes),
+  })
   assert.deepEqual(await runtime.invoke('run',[base],{timeoutMs:5000}),{success:true,body:'abc',progress:true})
   assert.equal((await fs.readFile(path.join(host.root,'track.bin'))).toString(),'abc')
+  assert.equal(received.reduce((sum, bytes)=>sum+bytes,0),3,
+    'each segment must report received bytes even before completion percentages advance')
+  assert.equal(received.length,3)
 })
 
 test('deadline and cancellation retire runaway runtimes', async t => {
