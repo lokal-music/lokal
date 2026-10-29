@@ -178,11 +178,11 @@ export default function OnlineSongList({ tracks, onPlay, numbered = false, showA
             <div className="min-w-0">
               <p className={`truncate text-sm ${marked ? 'text-accent' : 'text-white'}`}>{track.title}</p>
               <p className="truncate text-xs text-muted">{track.artist}</p>
-              {atmosAvailable(track) && <span className={`inline-block rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ${ATMOS_AVAILABLE.className}`} title="Tidal advertises an Atmos edition; use Play Atmos for original bitstream playback.">ATMOS AVAILABLE</span>}
+              {atmosAvailable(track) && <span className={`inline-block rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ${ATMOS_AVAILABLE.className}`} title="The catalogue advertises an Atmos edition; playback depends on the encoded source.">Atmos</span>}
             </div>
             {showAlbum && <p className="hidden truncate text-xs text-muted @lg:block">{track.album || ''}</p>}
             <span className="flex items-center justify-end gap-3">
-              {atmosRequestable(track) && <AtmosPlayButton track={{ ...track, ...anchorOf(track) }} onPlay={(mode, device) => playNativeDolby(track, mode, device)} />}
+              {atmosAvailable(track) && <AtmosPlayButton track={{ ...track, ...anchorOf(track) }} onPlay={(mode, device) => playNativeDolby(track, mode, device)} />}
               {own && <span title={t('In your library')} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-accent"><CheckCircle2 size={11} /> {t('In library')}</span>}
               {markOwned && !own && <button type="button" onContextMenu={event => { event.preventDefault(); event.stopPropagation(); openMenu(event, track) }} onClick={event => { event.stopPropagation(); downloadOnline([track]) }} title={t('Download {title}', { title: track.title })} aria-label={t('Download {title}', { title: track.title })} className="text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 focus:opacity-100"><Download size={14} /></button>}
               <span className="text-xs tabular-nums text-subtle">{time(track.duration)}</span>
