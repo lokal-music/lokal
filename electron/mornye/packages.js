@@ -401,7 +401,20 @@ class PackageService {
     if(addon.manifest.urlHandler?.enabled && /^(https?:|[a-z]+:)/i.test(query))results=await runtime.invoke('handleUrl',[query])
     else results=await runtime.invoke(runtime.methods.includes('searchTracks')?'searchTracks':'customSearch',runtime.methods.includes('searchTracks')?[query,limit]:[query,{limit,filter:addon.manifest.searchBehavior?.filters?.find(f=>/^(songs?|tracks?)$/.test(f.id))?.id || 'tracks'}])
     const tracks=Array.isArray(results)?results:results?.tracks || results?.album?.tracks || results?.artist?.top_tracks || (results?.track?[results.track]:[])
-    const songs=tracks.filter(t=>t?.id!=null&&(t.name||t.title)&&(!t.item_type||t.item_type==='track'))
+    let songs=tracks.filter(t=>t?.id!=null&&(t.name||t.title)&&(!t.item_type||t.item_type==='track'))
+    // Amazon can return the same ASIN in multiple search widgets. Collapse
+    // exact identities, not different releases with matching titles. Preserve
+    // an explicit Atmos mode if it appears only in a later duplicate row.
+    if (/^amazon(?:-(?:new|web))?$/i.test(addon.name)) {
+      const unique=new Map()
+      for (const song of songs) {
+        const id=String(song.id)
+        const existing=unique.get(id)
+        if (!existing) unique.set(id,song)
+        else if (hasAtmosMetadata(song) && !hasAtmosMetadata(existing)) unique.set(id,{...existing,...song})
+      }
+      songs=[...unique.values()]
+    }
     this.remember(key,songs);return songs.slice(0,limit).map(t=>trackOf(t,`a-${key}`,addon))
   }
   async browse(key,query,filter) {
