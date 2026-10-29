@@ -58,7 +58,7 @@ export function atmosRequestable(track) {
 export const ATMOS_AVAILABLE = {
   label: 'Dolby Atmos',
   hint: 'Dolby Atmos edition advertised by the catalogue. Does not prove the actual encoded stream or spatial output.',
-  className: 'bg-black text-white border-white/25',
+  className: 'bg-violet-500/15 text-violet-200 border-violet-400/30',
 }
 
 /** Did the spectrum check say this lossless file came from a lossy one? */
