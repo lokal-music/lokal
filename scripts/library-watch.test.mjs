@@ -7,7 +7,7 @@ import { test } from 'node:test'
 const require = createRequire(import.meta.url)
 const { initDB, getDB } = require('../electron/ipc/db')
 const { scanFolder, applyFileChanges } = require('../electron/ipc/scanner')
-const { stopWatching } = require('../electron/libraryWatcher')
+const { stopWatching, scanRootForCatchUp, discardPendingForRoot } = require('../electron/libraryWatcher')
 const { noteFileWritten } = require('../electron/fileStamp')
 const scanMetadata = require('../electron/ipc/scannerMetadata')
 
@@ -138,4 +138,42 @@ test('a folder moved into the music folder is read; one moved out leaves', async
   changes = await applyFileChanges([{ path: album, renamed: true }])
   assert.equal(changes.removed.length, 2)
   assert.equal(row(path.join(album, 'x.mp3')), undefined)
+})
+
+test('NAS catch-up uses scanner inventory and safely prunes only after a complete scan', async t => {
+  const { db, music, write, row } = fixture(t)
+  const keep = write('keep.mp3')
+  const gone = write('gone.mp3')
+  await scanFolder(music)
+  const retainedId = row(keep).id
+  assert.ok(row(gone))
+
+  // Prior implementation attempted scanner.walkDir(), which is not exported.
+  assert.equal(await scanRootForCatchUp(music), true)
+  assert.ok(row(gone), 'no deletion for a complete unchanged snapshot')
+
+  fs.rmSync(gone)
+  assert.equal(await scanRootForCatchUp(music), true)
+  assert.equal(row(gone), undefined)
+  assert.equal(row(keep).id, retainedId)
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 1)
+})
+
+test('a NAS overflow clears only that root\'s pending changes', () => {
+  const a = path.resolve('/mnt/nas-a')
+  const b = path.resolve('/mnt/nas-b')
+  const local = path.resolve('/music/local')
+  const aSong = path.join(a, 'Album', 'a.flac')
+  const bSong = path.join(b, 'Album', 'b.flac')
+  const localSong = path.join(local, 'Track.flac')
+  const pending = new Map([
+    [aSong, true], [bSong, false], [localSong, true], [a, true],
+  ])
+  const owner = value => [a, b, local].find(root => {
+    const relative = path.relative(root, value)
+    return relative && relative !== '..' &&
+      !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+  }) || null
+  discardPendingForRoot(pending, a, owner)
+  assert.deepEqual([...pending.keys()], [bSong, localSong])
 })

@@ -1,10 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
+import fs from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { scanNetworkRoots, withTimeout, verifiedMissingPaths } = require('../electron/ipc/networkLibrary.js')
+const { scanNetworkRoots, withTimeout, verifiedMissingPaths, verifiedPruneExists } = require('../electron/ipc/networkLibrary.js')
+const { discardPendingForRoot, watchLibraryRoots, stopWatching } = require('../electron/libraryWatcher.js')
 const local = path.resolve('/music/local')
 const nas = path.resolve('/mnt/nas')
 const missing = path.resolve('/mnt/not-found')
@@ -102,4 +105,79 @@ test('late NAS disconnect never turns watcher notifications into deletions', asy
     async root => root === local,
   )
   assert.deepEqual(mixed, [localPath])
+})
+
+test('NAS watcher overflow discards only events belonging to its root', () => {
+  const a = path.resolve('/mnt/a')
+  const b = path.resolve('/mnt/b')
+  const localRoot = path.resolve('/music/local')
+  const aSong = path.join(a, 'Album', 'song.flac')
+  const bSong = path.join(b, 'Album', 'other.flac')
+  const localSong = path.join(localRoot, 'song.mp3')
+  const changes = new Map([[aSong, true], [a, true], [bSong, true], [localSong, false]])
+  const owner = value => [a, b, localRoot].find(root => {
+    const relative = path.relative(root, value)
+    return relative && relative !== '..' &&
+      !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+  }) || null
+
+  discardPendingForRoot(changes, a, owner)
+  assert.deepEqual([...changes.keys()], [bSong, localSong])
+})
+
+test('a NAS watcher failure closes only its watcher, not healthy local roots', t => {
+  const a = path.resolve('/mnt/nas-a')
+  const localRoot = path.resolve('/music/local')
+  const opened = new Map()
+  const closed = []
+  t.mock.method(fs, 'watch', (folder) => {
+    const watcher = new EventEmitter()
+    watcher.close = () => { closed.push(folder) }
+    opened.set(folder, watcher)
+    return watcher
+  })
+  t.after(() => stopWatching())
+
+  watchLibraryRoots([a, localRoot])
+  assert.ok(opened.has(a))
+  assert.ok(opened.has(localRoot))
+
+  opened.get(a).emit('error', new Error('NAS disconnected'))
+  assert.deepEqual(closed, [a], 'other library roots must remain watched')
+  assert.ok(!closed.includes(localRoot))
+})
+
+test('NAS pruning uses asynchronous existence snapshot and never probes unknown paths', async () => {
+  const root = path.resolve('/mnt/nas')
+  const present = path.join(root, 'Album', 'present.flac')
+  const gone = path.join(root, 'Album', 'gone.flac')
+  const unknown = path.join(root, 'Album', 'not-in-db.flac')
+  const visited = []
+  const exists = await verifiedPruneExists(root, [present], [present, gone, gone], {
+    stat: async file => {
+      visited.push(file)
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+    },
+    isReadable: async () => true,
+  })
+  assert.equal(typeof exists, 'function')
+  assert.deepEqual(visited, [gone])
+  assert.equal(exists(root), true)
+  assert.equal(exists(present), true)
+  assert.equal(exists(gone), false)
+  assert.equal(exists(unknown), true, 'unknown rows must never be pruned')
+})
+
+test('NAS prune skips deletions when a file stat times out or root disappears', async () => {
+  const root = path.resolve('/mnt/nas')
+  const gone = path.join(root, 'gone.flac')
+  assert.equal(await verifiedPruneExists(root, [], [gone], {
+    stat: () => new Promise(() => {}),
+    timeoutMs: 10,
+    isReadable: async () => true,
+  }), null)
+  assert.equal(await verifiedPruneExists(root, [], [gone], {
+    stat: async () => { throw Object.assign(new Error('gone'), { code: 'ENOENT' }) },
+    isReadable: async () => false,
+  }), null)
 })

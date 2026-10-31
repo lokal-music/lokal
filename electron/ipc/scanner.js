@@ -455,6 +455,7 @@ async function scanFolder(folderPath, {
   forceArtistNameRefresh = null,
   persistArtistNamePreference = true,
   artistNamePreference = null,
+  onInventory = null,
 } = {}) {
   const db = getDB()
   // Artist text depends on this preference as well as file metadata/mtime.
@@ -470,6 +471,10 @@ async function scanFolder(folderPath, {
   } catch (e) { console.warn('[scanFolder] Artist re-link skipped:', e.message) }
   const walkFailures = []
   const files = await walkDir(folderPath, [], walkFailures)
+  // Watcher reconciliation needs the exact same snapshot. Walking a NAS
+  // twice adds avoidable I/O and can observe a different set of files if the
+  // mount disconnects between the two enumerations.
+  if (typeof onInventory === 'function') onInventory(files, walkFailures)
   scanStatus.errors += walkFailures.length
   scanStatus.total = files.length
   const PROGRESS_INTERVAL_MS = 100
@@ -588,17 +593,26 @@ async function scanFolder(folderPath, {
       const stat = await require('./networkLibrary').withTimeout(fsp.stat)(filePath)
       const trackId = 't-' + hashFile(filePath, stat)
       const existing = db.prepare('SELECT id, last_modified, artwork_path FROM tracks WHERE file_path = ?').get(filePath)
-      const folderArtwork = await getFolderArtwork(filePath)
       const networkArtwork = isNetworkArtworkPath(filePath, networkRoots)
       // A refresh re-reads unchanged files, but not ones whose artist the user
       // changed by hand (rename/merge/delete lock their links).
       const refreshThis = refreshArtistNames && !(existing && artistLinksLocked(db, existing.id))
+      const existingArtwork = existing?.artwork_path ? path.resolve(existing.artwork_path) : null
+      const storedArtworkDir = path.resolve(getStorageDir(), 'artwork')
+      // Only stat app-owned artwork synchronously. A legacy UNC path can hang
+      // the Electron main thread when its NAS stops responding.
+      const hasCachedArtwork = existingArtwork &&
+        path.dirname(existingArtwork) === storedArtworkDir &&
+        fs.existsSync(existingArtwork)
+      if (!refreshThis && existing && existing.last_modified === stat.mtimeMs &&
+          hasCachedArtwork && !isCachedFolderArtwork(existingArtwork)) {
+        // Valid app-owned embedded art takes precedence over folder art.
+        // No need to re-enumerate the remote directory for every album on
+        // every refresh just to rediscover a cover that will not be used.
+        scanStatus.done++; emitProgress(); continue
+      }
+      const folderArtwork = await getFolderArtwork(filePath)
       if (!refreshThis && existing && existing.last_modified === stat.mtimeMs) {
-        const existingArtwork = existing.artwork_path ? path.resolve(existing.artwork_path) : null
-        const storedArtworkDir = path.resolve(getStorageDir(), 'artwork')
-        const hasCachedArtwork = existingArtwork &&
-          path.dirname(existingArtwork) === storedArtworkDir &&
-          fs.existsSync(existingArtwork)
         const hasCurrentFolderArtwork = folderArtwork && existingArtwork === path.resolve(folderArtwork)
         const noArtworkToUpdate = !existingArtwork && !folderArtwork
         if (hasCurrentFolderArtwork) {
@@ -659,8 +673,19 @@ async function scanFolder(folderPath, {
         ? null : networkArtwork
           ? await getDurableFolderArtwork(folderArtwork)
           : folderArtwork
-      const previousArtwork = existing?.artwork_path && fs.existsSync(existing.artwork_path)
-        ? existing.artwork_path : null
+      let previousArtwork = null
+      if (existingArtwork) {
+        if (networkArtwork && isNetworkArtworkPath(existingArtwork, networkRoots)) {
+          // Legacy database rows may still point directly at remote cover
+          // files. Check them asynchronously with a deadline, not existsSync.
+          try {
+            const info = await require('./networkLibrary').withTimeout(fsp.stat)(existingArtwork)
+            if (info.isFile()) previousArtwork = existingArtwork
+          } catch {}
+        } else if (fs.existsSync(existingArtwork)) {
+          previousArtwork = existingArtwork
+        }
+      }
       const artwork = await extractArtwork(
         meta, trackId, localFolderArtwork || previousArtwork || folderArtwork)
       const replaygain = c.replaygain_track_gain || null
