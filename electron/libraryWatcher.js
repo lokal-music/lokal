@@ -29,7 +29,7 @@ let roots = []
 let root = null // legacy primary root for diagnostics
 let timer = null
 let running = null
-let recovering = null
+const recovering = new Map()
 let catchUp = null
 const pending = new Map() // path -> whether it appeared/went (vs changed)
 const catchUpRoots = new Set()
@@ -253,21 +253,61 @@ function catchUpLater(folder) {
   scheduleCatchUp()
 }
 
-/** The watcher stopped: catch up the failed root and restore all configured watchers. */
+function attachWatcher(next) {
+  if (watchers.has(next)) return
+  try {
+    const watcher = fs.watch(next, { recursive: true }, (type, name) => {
+      // Missing names or buffer overflows trigger safe per-root catch-up.
+      if (!name || catchUp) return catchUpLater(next)
+      queue(path.join(next, String(name)), type === 'rename')
+    })
+    watcher.on('error', error => {
+      console.warn('[libraryWatcher] Watching stopped:', error.message)
+      recover(next)
+    })
+    watchers.set(next, watcher)
+    console.log(`[libraryWatcher] Watching ${next}`)
+  } catch (error) {
+    console.warn('[libraryWatcher] Could not watch music folder:', next, error.message)
+  }
+}
+
+/** A failed NAS watcher must not stop every other active library root. */
 function recover(folder) {
   const target = path.resolve(folder)
-  stopWatching()
-  recovering = setTimeout(async () => {
-    recovering = null
-    if (selectedRoot(target)) {
-      try { await scan(target) } catch (error) { console.warn('[libraryWatcher] Recovery scan failed:', error.message) }
+  // Drop only stale events from the failed root; preserve local and other NAS
+  // changes already queued for the incremental scanner.
+  discardPendingForRoot(pending, target, rootForPath)
+  const failed = watchers.get(target)
+  if (failed) {
+    try { failed.close() } catch {}
+    watchers.delete(target)
+  }
+  roots = [...watchers.keys()]
+  root = roots[0] || null
+
+  clearTimeout(recovering.get(target))
+  recovering.set(target, setTimeout(async () => {
+    recovering.delete(target)
+    if (!selectedRoot(target)) return
+    try {
+      await scan(target)
+    } catch (error) {
+      console.warn('[libraryWatcher] Recovery scan failed:', error.message)
     }
-    const { isReadableRoot } = require('./ipc/networkLibrary')
-    const candidates = configuredRoots()
-    const online = await Promise.all(candidates.map(async folder =>
-      await isReadableRoot(folder) ? folder : null))
-    watchLibraryRoots(online.filter(Boolean))
-  }, RECOVER_MS)
+    // Probe only the affected mount. Restarting every watcher here would
+    // drop unrelated local edits made while the NAS was reconnecting.
+    try {
+      const { isReadableRoot } = require('./ipc/networkLibrary')
+      if (selectedRoot(target) && !watchers.has(target) && await isReadableRoot(target)) {
+        attachWatcher(target)
+        roots = [...watchers.keys()]
+        root = roots[0] || null
+      }
+    } catch (error) {
+      console.warn('[libraryWatcher] Watcher reconnection failed:', error.message)
+    }
+  }, RECOVER_MS))
 }
 
 function watchLibrary(folder) {
@@ -293,24 +333,7 @@ function watchLibraryRoots(folderPaths = []) {
   stopWatching()
   roots = nextRoots
   root = nextRoots[0] || null
-  for (const next of nextRoots) {
-    try {
-      const watcher = fs.watch(next, { recursive: true }, (type, name) => {
-        // A missing filename or an overflow means the watcher dropped events;
-        // a catch-up scan of that root is cheaper and safer than guessing.
-        if (!name || catchUp) return catchUpLater(next)
-        queue(path.join(next, String(name)), type === 'rename')
-      })
-      watcher.on('error', error => {
-        console.warn('[libraryWatcher] Watching stopped:', error.message)
-        recover(next)
-      })
-      watchers.set(next, watcher)
-      console.log(`[libraryWatcher] Watching ${next}`)
-    } catch (error) {
-      console.warn('[libraryWatcher] Could not watch music folder:', next, error.message)
-    }
-  }
+  for (const next of nextRoots) attachWatcher(next)
   // Only directories whose fs.watch was successfully established are active.
   // Unavailable NAS roots remain in persisted settings, not in live watchers.
   roots = [...watchers.keys()]
@@ -330,8 +353,8 @@ function stopWatching() {
   catchUp = null
   catchUpRoots.clear()
   catchUpAttempts.clear()
-  clearTimeout(recovering)
-  recovering = null
+  for (const timeout of recovering.values()) clearTimeout(timeout)
+  recovering.clear()
   pending.clear()
 }
 
