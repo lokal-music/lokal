@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { scanNetworkRoots, withTimeout, verifiedMissingPaths } = require('../electron/ipc/networkLibrary.js')
+const { discardPendingForRoot } = require('../electron/libraryWatcher.js')
 const local = path.resolve('/music/local')
 const nas = path.resolve('/mnt/nas')
 const missing = path.resolve('/mnt/not-found')
@@ -102,4 +103,22 @@ test('late NAS disconnect never turns watcher notifications into deletions', asy
     async root => root === local,
   )
   assert.deepEqual(mixed, [localPath])
+})
+
+test('NAS watcher overflow discards only events belonging to its root', () => {
+  const a = path.resolve('/mnt/a')
+  const b = path.resolve('/mnt/b')
+  const localRoot = path.resolve('/music/local')
+  const aSong = path.join(a, 'Album', 'song.flac')
+  const bSong = path.join(b, 'Album', 'other.flac')
+  const localSong = path.join(localRoot, 'song.mp3')
+  const changes = new Map([[aSong, true], [a, true], [bSong, true], [localSong, false]])
+  const owner = value => [a, b, localRoot].find(root => {
+    const relative = path.relative(root, value)
+    return relative && relative !== '..' &&
+      !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+  }) || null
+
+  discardPendingForRoot(changes, a, owner)
+  assert.deepEqual([...changes.keys()], [bSong, localSong])
 })
