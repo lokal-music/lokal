@@ -164,7 +164,13 @@ async function scan(folder) {
   // walk could return a different snapshot after a NAS disconnect.
   if (!scanned || scanned.errors || !inventory || walkFailures?.length) return false
   if (!selectedRoot(target) || !await isReadableRoot(target)) return false
-  const pruned = require('./libraryPrune').pruneMissingTracks(db, target, files)
+  const { verifiedPruneExists } = require('./ipc/networkLibrary')
+  const verifiedExists = await verifiedPruneExists(
+    target, files, before.map(row => row.file_path))
+  if (!verifiedExists || !selectedRoot(target)) return false
+  const pruned = require('./libraryPrune').pruneMissingTracks(db, target, files, {
+    exists: verifiedExists,
+  })
   const after = db.prepare("SELECT id, file_path, last_modified FROM tracks WHERE file_path NOT LIKE 'ghost://%'").all()
   const afterIds = new Set(after.map(row => row.id))
   const beforeByPath = new Map(before.map(row => [path.resolve(row.file_path).toLowerCase(), row]))
