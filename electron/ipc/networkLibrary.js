@@ -39,6 +39,65 @@ async function isReadableRoot(folder, {
   }
 }
 
+// Prepare a synchronous, *in-memory* existence predicate for the legacy
+// SQLite pruning transaction. All actual filesystem checks happen
+// asynchronously, before entering the transaction: UNC/WebDAV paths must
+// never hit fs.existsSync on Electron's main thread during playback.
+// Unknown paths are treated as present; uncertain status must preserve music.
+async function verifiedPruneExists(root, scannedFiles, knownRows, {
+  stat = fs.stat,
+  isReadable = isReadableRoot,
+  timeoutMs = STAT_TIMEOUT_MS,
+} = {}) {
+  const parent = path.resolve(root).toLowerCase()
+  const present = new Set(scannedFiles.map(file => path.resolve(file).toLowerCase()))
+  const missing = new Set()
+  const candidates = []
+  for (const file of knownRows) {
+    if (typeof file !== 'string' || !file) continue
+    const resolved = path.resolve(file)
+    const relative = path.relative(root, resolved)
+    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) ||
+        path.isAbsolute(relative)) continue
+    const normalized = resolved.toLowerCase()
+    if (!present.has(normalized) && !missing.has(normalized)) {
+      candidates.push([normalized, resolved])
+      // Mark as visited to avoid checking a duplicate database path.
+      present.add(normalized)
+    }
+  }
+  // The candidate set is only a deduplication aid; the scan's actual
+  // inventory is authoritative for what was present during enumeration.
+  for (const [key] of candidates) present.delete(key)
+
+  for (let start = 0; start < candidates.length; start += 8) {
+    const batch = candidates.slice(start, start + 8)
+    const checks = await Promise.all(batch.map(async ([key, file]) => {
+      try {
+        await withTimeout(stat, timeoutMs)(file)
+        return [key, true]
+      } catch (error) {
+        if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
+          return [key, false]
+        }
+        return [key, null]
+      }
+    }))
+    if (checks.some(([, found]) => found === null)) return null
+    for (const [key, found] of checks) {
+      if (found) present.add(key)
+      else missing.add(key)
+    }
+  }
+  if (!await isReadable(root)) return null
+  return file => {
+    const key = path.resolve(file).toLowerCase()
+    if (key === parent || present.has(key)) return true
+    if (missing.has(key)) return false
+    return true
+  }
+}
+
 // A late fs.watch notification after disconnect must not destroy indexed
 // music. Recheck each affected root immediately before any delete; group by
 // root so a bulk rename does not cause thousands of NAS probes.
@@ -183,4 +242,4 @@ function registerNetworkLibraryHandlers(ipcMain) {
   })
 }
 
-module.exports = { registerNetworkLibraryHandlers, isReadableRoot, scanNetworkRoots, withTimeout, verifiedMissingPaths }
+module.exports = { registerNetworkLibraryHandlers, isReadableRoot, scanNetworkRoots, withTimeout, verifiedMissingPaths, verifiedPruneExists }
