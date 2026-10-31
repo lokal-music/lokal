@@ -639,7 +639,9 @@ async function fetchLibraryPlaylists({ cookies, fetchImpl = fetch, limit = 2000 
   if (pages.error) throw new Error(pages.error.replace('mix loading', 'playlist loading'))
   const playlists = new Map()
   for (const page of pages.pages) for (const item of parseAccountPlaylists(page, limit)) {
-    if (!/^RD/.test(item.id)) playlists.set(item.id, item)
+    // Continuations can repeat a previously saved playlist with less reliable
+    // title/artwork metadata. Keep the first complete card and source order.
+    if (!/^RD/.test(item.id) && !playlists.has(item.id)) playlists.set(item.id, item)
   }
   return [...playlists.values()].slice(0, limit)
 }
