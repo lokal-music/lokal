@@ -13,6 +13,7 @@ const sources = require('../online/sources')
 const { selectedHttpSpatial } = require('../online/httpSpatial')
 const genres = require('../online/genres')
 const youtube = require('../online/youtube')
+const { youtubePlaylistAccountId } = require('../online/youtubePlaylistIdentity')
 const { createArtworkResolver } = require('../discoveryArtwork')
 const { spelling } = require('../online/spelling')
 const { netFetch } = require('../online/netFetch')
@@ -197,28 +198,34 @@ function registerOnlineHandlers(ipcMain) {
   const youtubeLibraryResource = async (key, force, loader, empty) => {
     try {
       return await accountRequest(async ({ cookies, fetchImpl }) => {
-        const cookie = youtube.normalizeAccountCookies(cookies || '')
-        if (!youtube.accountHeaders(cookie)) return { ...empty, accountId: '', error: 'Sign in to YouTube Music in Integrations.' }
-        const accountId = crypto.createHash('sha256').update(cookie).digest('hex')
-        const hit = youtubePlaylistDisk.read(cookie, key)
+        // The session's Cookie header changes on normal Music API requests.
+        // Cache ownership and the mid-request account check must instead use
+        // the persistent sign-in generation and selected account/channel.
+        if (!youtube.accountHeaders(cookies || ''))
+          return { ...empty, accountId: '', error: 'Sign in to YouTube Music in Integrations.' }
+        const accountId = youtubePlaylistAccountId({ cookies }, settings())
+        const hit = youtubePlaylistDisk.read(accountId, key)
         const autoUpdate = settings().youtube_playlist_auto_update === '1'
-        if (hit && !force) return { ...hit.value, accountId, lastUpdated: hit.at, autoUpdate, refreshDue: youtubePlaylistDisk.due(cookie, key, autoUpdate) }
+        if (hit && !force) return { ...hit.value, accountId, lastUpdated: hit.at, autoUpdate, refreshDue: youtubePlaylistDisk.due(accountId, key, autoUpdate) }
         const requestKey = `${accountId}:${key}`
         if (youtubePlaylistPending.has(requestKey)) return youtubePlaylistPending.get(requestKey)
+        const sameAccount = async () => {
+          const current = await accountSession.credentials()
+          return !!youtube.accountHeaders(current.cookies || '') &&
+            youtubePlaylistAccountId(current, settings()) === accountId
+        }
         const task = (async () => {
           try {
             const value = await loader({ cookies, fetchImpl })
             if (value?.error) throw new Error(value.error)
-            const current = await accountSession.credentials()
-            if (youtube.normalizeAccountCookies(current.cookies || '') !== cookie)
+            if (!await sameAccount())
               return { ...empty, accountId: '', error: 'YouTube Music account changed.' }
-            youtubePlaylistDisk.save(cookie, key, value)
+            youtubePlaylistDisk.save(accountId, key, value)
             return { ...value, accountId, lastUpdated: Date.now(), autoUpdate, refreshDue: false }
           } catch (error) {
-            const current = await accountSession.credentials()
-            if (youtube.normalizeAccountCookies(current.cookies || '') !== cookie)
+            if (!await sameAccount())
               return { ...empty, accountId: '', error: 'YouTube Music account changed.' }
-            youtubePlaylistDisk.failed(cookie, key)
+            youtubePlaylistDisk.failed(accountId, key)
             return hit
               ? { ...hit.value, accountId, lastUpdated: hit.at, autoUpdate, error: error.message, refreshDue: false }
               : { ...empty, accountId, error: error.message }
