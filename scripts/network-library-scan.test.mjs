@@ -1,11 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
+import fs from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { scanNetworkRoots, withTimeout, verifiedMissingPaths } = require('../electron/ipc/networkLibrary.js')
-const { discardPendingForRoot } = require('../electron/libraryWatcher.js')
+const { discardPendingForRoot, watchLibraryRoots, stopWatching } = require('../electron/libraryWatcher.js')
 const local = path.resolve('/music/local')
 const nas = path.resolve('/mnt/nas')
 const missing = path.resolve('/mnt/not-found')
@@ -121,4 +123,26 @@ test('NAS watcher overflow discards only events belonging to its root', () => {
 
   discardPendingForRoot(changes, a, owner)
   assert.deepEqual([...changes.keys()], [bSong, localSong])
+})
+
+test('a NAS watcher failure closes only its watcher, not healthy local roots', t => {
+  const a = path.resolve('/mnt/nas-a')
+  const localRoot = path.resolve('/music/local')
+  const opened = new Map()
+  const closed = []
+  t.mock.method(fs, 'watch', (folder) => {
+    const watcher = new EventEmitter()
+    watcher.close = () => { closed.push(folder) }
+    opened.set(folder, watcher)
+    return watcher
+  })
+  t.after(() => stopWatching())
+
+  watchLibraryRoots([a, localRoot])
+  assert.ok(opened.has(a))
+  assert.ok(opened.has(localRoot))
+
+  opened.get(a).emit('error', new Error('NAS disconnected'))
+  assert.deepEqual(closed, [a], 'other library roots must remain watched')
+  assert.ok(!closed.includes(localRoot))
 })
