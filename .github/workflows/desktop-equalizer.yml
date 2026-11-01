@@ -1,0 +1,44 @@
+name: Desktop equalizer parity
+
+on:
+  pull_request:
+    paths:
+      - 'src/audio/equalizer*'
+      - 'src/audio/autoeqCatalog.json'
+      - 'src/components/EqualizerModal.jsx'
+      - 'src/pages/Settings.jsx'
+      - 'src/App.jsx'
+      - 'scripts/equalizer-port.test.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-equalizer.yml'
+  push:
+    paths:
+      - 'src/audio/equalizer*'
+      - 'src/audio/autoeqCatalog.json'
+      - 'src/components/EqualizerModal.jsx'
+      - 'src/pages/Settings.jsx'
+      - 'src/App.jsx'
+      - 'scripts/equalizer-port.test.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-equalizer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eq-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - name: Validate equalizer behavior
+        run: npm run test:equalizer
+      - name: Compile renderer
+        run: |
+          npm run gen:icons
+          npx vite build

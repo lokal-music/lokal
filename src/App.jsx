@@ -1,4 +1,6 @@
 import { NativeAudioBridge, readOutputPreferences, saveOutputPreferences } from './audio/nativeOutput'
+import { createEqualizerRack, loadImpulseFile } from './audio/equalizerGraph.mjs'
+import { loadEqState } from './audio/equalizerConfig.mjs'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import { effectiveReplayGainMode, replayGainMultiplier } from './audio/replayGain.mjs'
 import { readCrossfadeSettings, fadeCurve, crossfadeDurations, CROSSFADE_MIN_S } from './audio/crossfade'
@@ -141,18 +143,6 @@ function upcomingTrack(state) {
   return queueIndex + 1 < queue.length ? queue[queueIndex + 1] : null
 }
 
-const EQ_AUDIO_BANDS = [
-  { frequency: 31, type: 'lowshelf', q: 0.7 },
-  { frequency: 62, type: 'peaking', q: 0.9 },
-  { frequency: 125, type: 'peaking', q: 0.95 },
-  { frequency: 250, type: 'peaking', q: 0.95 },
-  { frequency: 500, type: 'peaking', q: 1 },
-  { frequency: 1000, type: 'peaking', q: 1 },
-  { frequency: 2000, type: 'peaking', q: 1 },
-  { frequency: 4000, type: 'peaking', q: 0.95 },
-  { frequency: 8000, type: 'peaking', q: 0.9 },
-  { frequency: 16000, type: 'highshelf', q: 0.7 },
-]
 const LASTFM_STATUS_KEY = 'lokal-lastfm-status-feed'
 const YTDLP_DISMISS_KEY = 'lokal-ytdlp-version-dismissed'
 // A scrobble / listen that wasn't sent is tried again after this long (not every second).
@@ -194,15 +184,9 @@ function pushLastfmStatus(entry) {
   } catch {}
 }
 
-function normalizeEqGains(input) {
-  const values = Array.isArray(input) ? input.map(v => Number(v) || 0) : []
-  if (values.length === EQ_AUDIO_BANDS.length) {
-    return values.slice(0, EQ_AUDIO_BANDS.length)
-  }
-  if (values.length === 5) {
-    return [values[0], values[0], values[1], values[1], values[2], values[2], values[3], values[3], values[4], values[4]]
-  }
-  return EQ_AUDIO_BANDS.map((_, i) => values[i] || 0)
+function eqPlaybackRate() {
+  const state = loadEqState()
+  return playbackSpeed() * (state.enabled && state.fx.enabled ? state.fx.tempo : 1)
 }
 
 function KeyboardShortcuts() {
@@ -699,21 +683,27 @@ export default function App() {
   // beat-matched rate alone until its normal glide at the end of the transition.
   useEffect(() => {
     const apply = speed => {
+      const state = loadEqState()
+      const rate = speed * (state.enabled && state.fx.enabled ? state.fx.tempo : 1)
       for (const el of [audioRef.current, cfAudioRef.current]) {
         if (!el) continue
         try {
-          el.defaultPlaybackRate = speed
+          el.preservesPitch = true
+          el.defaultPlaybackRate = rate
           if (!isCrossfadingRef.current) {
             clearInterval(rateGlideRef.current)
-            el.playbackRate = speed
+            el.playbackRate = rate
           }
         } catch {}
       }
     }
     apply(playbackSpeed())
-    return usePlaybackSpeed.subscribe((state, previous) => {
+    const unsubscribe = usePlaybackSpeed.subscribe((state, previous) => {
       if (state.speed !== previous.speed) apply(state.speed)
     })
+    const onEqChanged = () => apply(playbackSpeed())
+    window.addEventListener('lokal:eq-changed', onEqChanged)
+    return () => { unsubscribe(); window.removeEventListener('lokal:eq-changed', onEqChanged) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const audioSourcesInitializedRef = useRef(false)
   const playSecsRef = useRef(0)
@@ -724,6 +714,7 @@ export default function App() {
   const lastFlushedTrackIdRef = useRef(null)
   const artworkCacheRef = useRef({})
   const eqFiltersRef = useRef([])
+  const eqRacksRef = useRef(null)
   const activeElementRef = useRef('primary')
   const pauseSuppressRef = useRef(false)
   const crossfadeTokenRef = useRef(0)
@@ -768,7 +759,6 @@ export default function App() {
   const [changelog, setChangelog] = useState('')
   const [loadingChangelog, setLoadingChangelog] = useState(false)
   const clampEq = (v) => Math.max(-12, Math.min(12, Number(v) || 0))
-  const shapeEqGain = (v) => clampEq(v) * 0.72
 
   const getArtworkDataURL = useCallback(async (artworkPath) => {
     if (!artworkPath) return null
@@ -1228,25 +1218,12 @@ export default function App() {
     }
     ctx.addEventListener('statechange', keepAudioRunning)
 
-    const nodes = EQ_AUDIO_BANDS.map((band) => {
-      const f = ctx.createBiquadFilter()
-      f.type = band.type
-      f.frequency.value = band.frequency
-      f.Q.value = band.q
-      f.gain.value = 0
-      return f
-    })
-
-    const cfNodes = EQ_AUDIO_BANDS.map((band, i) => {
-      const f = ctx.createBiquadFilter()
-      f.type = band.type
-      f.frequency.value = band.frequency
-      f.Q.value = band.q
-      f.gain.value = nodes[i].gain.value
-      return f
-    })
-
-    eqFiltersRef.current = { primary: nodes, cf: cfNodes }
+    // Both decks run identical DSP through independent racks so their EQ and
+    // dynamics continue smoothly across track transitions.
+    const primaryEqRack = createEqualizerRack(ctx)
+    const cfEqRack = createEqualizerRack(ctx)
+    eqRacksRef.current = { primary: primaryEqRack, cf: cfEqRack }
+    eqFiltersRef.current = { primary: primaryEqRack.filters, cf: cfEqRack.filters }
 
     const primarySource = ctx.createMediaElementSource(audioRef.current)
     const cfSource = ctx.createMediaElementSource(cfAudioRef.current)
@@ -1294,41 +1271,48 @@ export default function App() {
       cfSource.connect(cfReplayGain)
       cfReplayGain.connect(analyser)
     } else {
-      let prev = primarySource
-      for (const n of nodes) { prev.connect(n); prev = n }
-      prev.connect(primaryReplayGain)
+      primarySource.connect(primaryEqRack.input)
+      primaryEqRack.output.connect(primaryReplayGain)
       primaryReplayGain.connect(primaryGain)
       primaryGain.connect(primaryFade)
       primaryFade.connect(primaryMix)
       primaryMix.connect(analyser)
       analyser.connect(ctx.destination)
 
-      let cfPrev = cfSource
-      for (const n of cfNodes) { cfPrev.connect(n); cfPrev = n }
-      cfPrev.connect(cfReplayGain)
+      cfSource.connect(cfEqRack.input)
+      cfEqRack.output.connect(cfReplayGain)
       cfReplayGain.connect(cfGain)
       cfGain.connect(cfFade)
       cfFade.connect(cfMix)
       cfMix.connect(analyser)
     }
 
-    try {
-      const stored = normalizeEqGains(JSON.parse(localStorage.getItem('lokal-eq') || '[]'))
-      stored.forEach((v, i) => {
-        const shaped = shapeEqGain(v)
-        if (nodes[i]) nodes[i].gain.value = shaped
-        if (cfNodes[i]) cfNodes[i].gain.value = shaped
-      })
-    } catch (err) {
+    const applyEqSettings = state => {
+      primaryEqRack.apply(state)
+      cfEqRack.apply(state)
     }
-
+    applyEqSettings(loadEqState())
+    // Called by the EQ dialog and retained for older desktop integrations.
     window.__lokaleq = {
-      setGain: (i, v) => {
-        const shaped = shapeEqGain(v)
-        if (nodes[i]) nodes[i].gain.value = shaped
-        if (cfNodes[i]) cfNodes[i].gain.value = shaped
-      }
+      apply: applyEqSettings,
+      setGain: (index, gain) => {
+        const updated = loadEqState()
+        if (index < 0 || index >= updated.graphicGainsDb.length) return
+        updated.graphicGainsDb[index] = gain
+        applyEqSettings(updated)
+      },
     }
+    const reloadImpulse = async () => {
+      const raw = await loadImpulseFile().catch(() => null)
+      const buffer = raw ? await ctx.decodeAudioData(raw.slice(0)) : null
+      primaryEqRack.setImpulse(buffer)
+      cfEqRack.setImpulse(buffer)
+      applyEqSettings(loadEqState())
+    }
+    reloadImpulse().catch(error => console.warn('[equalizer] IR failed:', error))
+    window.addEventListener('lokal:eq-ir-changed', () => {
+      reloadImpulse().catch(error => console.warn('[equalizer] IR reload failed:', error))
+    })
 
     if (window.electron?.nativeAudio && !isIOS) {
       nativeAudioRef.current = new NativeAudioBridge(ctx, analyser, window.electron.nativeAudio, status => {
@@ -2473,7 +2457,7 @@ export default function App() {
     // An AutoMix transition called off: filters open, both songs at their own speed.
     openMixFilters()
     clearInterval(rateGlideRef.current)
-    for (const el of [audioRef.current, cfAudioRef.current]) { try { if (el && el.playbackRate !== playbackSpeed()) el.playbackRate = playbackSpeed() } catch {} }
+    for (const el of [audioRef.current, cfAudioRef.current]) { try { if (el && el.playbackRate !== eqPlaybackRate()) el.playbackRate = eqPlaybackRate() } catch {} }
     if (usePlayerStore.getState().mixing) usePlayerStore.setState({ mixing: null })
   }, [openMixFilters])
 
@@ -2612,12 +2596,12 @@ export default function App() {
       !outgoingTrack.atmosEncoded && !nextTrack.atmosEncoded &&
       (!window.__lokalOutputStatus || window.__lokalOutputStatus.mode === 'auto') &&
       !streamRef(outgoingTrack) && !streamRef(nextTrack) &&
-      Math.abs(playbackSpeed() - 1) < 1e-4)
+      Math.abs(eqPlaybackRate() - 1) < 1e-4)
     if (enableStem) {
       preparedStemFor(outgoingTrack, nextTrack)
         .then(clip => {
           if (token === crossfadeTokenRef.current &&
-              eligibleStemTransition(clip, plan, playbackSpeed())) preparedStemClip = clip
+              eligibleStemTransition(clip, plan, eqPlaybackRate())) preparedStemClip = clip
         }).catch(() => {})
     }
     if (!encodedSrc) { isCrossfadingRef.current = false; expectedCrossfadeTrackIdRef.current = null; return }
@@ -2690,7 +2674,7 @@ export default function App() {
         // AutoMix: the next song waits, ready, at its entry point, until the
         // playing one reaches the transition (it was loaded ahead of it).
         try { fadeInEl.currentTime = plan.inOffset || 0 } catch {}
-        try { fadeInEl.playbackRate = (plan.rate || 1) * playbackSpeed() } catch {}
+        try { fadeInEl.playbackRate = (plan.rate || 1) * eqPlaybackRate() } catch {}
         const waitForStart = () => {
           if (!isCrossfadingRef.current || token !== crossfadeTokenRef.current) return
           if (plan.kind === 'gapless') {
@@ -2798,7 +2782,7 @@ export default function App() {
         openMixFilters()
         usePlayerStore.setState({ mixing: null })
         // A beat-matched song back to its own tempo, gently (8 s).
-        if (plan && !usingStemClip && fadeInEl.playbackRate !== playbackSpeed()) {
+        if (plan && !usingStemClip && fadeInEl.playbackRate !== eqPlaybackRate()) {
           clearInterval(rateGlideRef.current)
           const from = fadeInEl.playbackRate
           const began = Date.now()
@@ -2806,7 +2790,7 @@ export default function App() {
           // audio (costly on Linux): a few coarse steps, not 80 tiny ones.
           rateGlideRef.current = setInterval(() => {
             const part = Math.min(1, (Date.now() - began) / 8000)
-            const target = playbackSpeed()
+            const target = eqPlaybackRate()
             const rate = from + (target - from) * part
             try { fadeInEl.playbackRate = Math.abs(rate - target) < 0.004 ? target : Math.round(rate * 1000) / 1000 } catch {}
             if (part >= 1 || fadeInEl.playbackRate === playbackSpeed()) clearInterval(rateGlideRef.current)
@@ -2823,7 +2807,7 @@ export default function App() {
       }
       let usingStemClip = false
       if (preparedStemClip && analyserRef.current &&
-          eligibleStemTransition(preparedStemClip, plan, playbackSpeed())) {
+          eligibleStemTransition(preparedStemClip, plan, eqPlaybackRate())) {
         const clip = createStemPlayback({
           clip: preparedStemClip, ctx, analyser: analyserRef.current,
           outgoing: fadeOutEl, incoming: fadeInEl,
@@ -2839,7 +2823,7 @@ export default function App() {
           stemPlaybackRef.current = clip
           // The clip includes the upstream tempo warp. The real next song
           // stays at native speed and resumes at the exact source timestamp.
-          try { fadeInEl.playbackRate = playbackSpeed() } catch {}
+          try { fadeInEl.playbackRate = eqPlaybackRate() } catch {}
           usePlayerStore.setState({
             mixing: { kind: 'stem', until: Date.now() + preparedStemClip.durationSeconds * 1000 },
           })
@@ -3247,7 +3231,7 @@ export default function App() {
           if (plan && plan !== AUTOMIX_FALLBACK && remaining < 60 &&
               state.crossfade?.stemClips && !streamRef(current) &&
               !streamRef(nextTrack) && !current.atmosNative &&
-              !nextTrack.atmosNative && Math.abs(playbackSpeed() - 1) < 1e-4) {
+              !nextTrack.atmosNative && Math.abs(eqPlaybackRate() - 1) < 1e-4) {
             preparedStemFor(current, nextTrack)
           }
           // Album continuation is supposed to be unaltered by AutoMix.
