@@ -9,7 +9,6 @@ const glide = (param,value,ctx) => {
   try { param.cancelScheduledValues(now);param.setTargetAtTime(value,now,.012) }
   catch { param.value=value }
 }
-const shape = db => db * .72 // Preserve the desktop graphic-EQ response on migration.
 const biquad = (ctx,type,frequency,q=1) => {
   const node=ctx.createBiquadFilter()
   node.type=type;node.frequency.value=frequency;node.Q.value=q
@@ -59,7 +58,7 @@ export function createEqualizerRack(ctx) {
   let hasImpulse=false
   function apply(raw) {
     const s=normalizeEqState(raw)
-    graphic.forEach((node,i)=>glide(node.gain,s.enabled&&s.mode==='graphic'?shape(s.graphicGainsDb[i]):0,ctx))
+    graphic.forEach((node,i)=>glide(node.gain,s.enabled&&s.mode==='graphic'?s.graphicGainsDb[i]:0,ctx))
     parametric.forEach((node,i)=>{
       const band=s.parametricBands[i]
       const active=s.enabled&&s.mode==='parametric'&&band?.enabled
