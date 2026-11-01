@@ -5,6 +5,7 @@ import {
   saveEqState, parseEqPreset, exportEqPresetText, applyPreset
 } from '../src/audio/equalizerConfig.mjs'
 import { createEqualizerRack } from '../src/audio/equalizerGraph.mjs'
+import { equalizerResponseDb } from '../src/audio/equalizerResponse.mjs'
 
 function storage(initial={}) {
   const map=new Map(Object.entries(initial))
@@ -82,4 +83,15 @@ test('two independent DSP racks can apply the same EQ without sharing audio node
   a.apply({...defaults(),convolver:{...defaults().convolver,enabled:true,mix:.5}})
   assert.ok(nodes.filter(n=>n.kind==='Convolver').some(n=>n.buffer?.sampleRate===48000))
   assert.ok(nodes.some(n=>n.kind==='Gain'&&n.gain.value===.5))
+})
+
+test('response curve matches flat bypass and boosted parametric peak',()=>{
+  const freqs=[50,1000,10000]
+  const flat=equalizerResponseDb(defaults(),freqs)
+  assert.ok(flat.every(v=>Math.abs(v)<1e-6))
+  const peak=equalizerResponseDb({...defaults(),mode:'parametric',
+    parametricBands:[{type:'peaking',enabled:true,frequencyHz:1000,gainDb:6,q:1}]},freqs)
+  assert.ok(peak[1]>5.9&&peak[1]<6.1)
+  assert.ok(Math.abs(peak[0])<1)
+  assert.deepEqual(equalizerResponseDb({...defaults(),enabled:false},freqs),[0,0,0])
 })
