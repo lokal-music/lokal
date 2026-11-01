@@ -56,7 +56,7 @@ function ResponsePreview({state}){
           const weight=b.type==='lowShelf' ? 1/(1+Math.exp(distance*3))
             :b.type==='highShelf'?1/(1+Math.exp(-distance*3))
             :Math.exp(-.5*distance*distance)
-          y+=(b.gainDb||0)*weight*(state.mode==='graphic'?.72:1)
+          y+=(b.gainDb||0)*weight*1
         }
         y+=state.bassDb/(1+Math.exp((lf-Math.log2(120))*3))
         y+=state.midDb*Math.exp(-.5*Math.pow((lf-Math.log2(1000))/1.6,2))
