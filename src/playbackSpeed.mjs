@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export const SPEED_MIN = 0.1
 export const SPEED_MAX = 2.5
-export const SPEED_STEP = 0.05
+export const SPEED_STEP = 0.01
 const STORAGE_KEY = 'lokal-playback-speed'
 
 export function normalizeSpeed(value) {
