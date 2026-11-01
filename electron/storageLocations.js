@@ -24,6 +24,12 @@ function downloadDirectory(settings = {}, explicitOutputDir = '') {
   return savedRoot('downloads', settings) || settings.music_folder || path.join(os.homedir(), 'Music')
 }
 
+// Paired-phone originals follow the same user-selected download drive,
+ // never the private application database directory.
+function phoneCopyDirectory(settings = {}) {
+  return path.join(downloadDirectory(settings), 'Lokal Phone')
+}
+
 function cacheDirectoryRoot() {
   return savedRoot('cache') || getStorageDir()
 }
@@ -57,4 +63,4 @@ function saveRoot(kind, selected) {
   return root
 }
 
-module.exports = { KEYS, savedRoot, downloadDirectory, cacheDirectoryRoot, validateWritableDirectory, saveRoot }
+module.exports = { KEYS, savedRoot, downloadDirectory, phoneCopyDirectory, cacheDirectoryRoot, validateWritableDirectory, saveRoot }
