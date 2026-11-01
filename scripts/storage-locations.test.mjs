@@ -12,6 +12,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lokal-storage-test-'))
 after(() => fs.rmSync(root, { recursive: true, force: true }))
 const rows = new Map()
 const db = {
+  transaction: callback => callback,
   prepare() {
     return {
       get: key => ({ value: rows.get(key) }),
@@ -102,6 +103,20 @@ test('paired-phone original files have a separate selected destination', () => {
   assert.equal(storage.savedRoot('cache'), '')
   assert.equal(storage.saveRoot('phone', ''), '')
   assert.equal(storage.phoneDownloadDirectory(), initial)
+})
+
+test('a changed or missing selected volume rejects phone uploads instead of writing to its mountpoint', () => {
+  const selected = path.join(root, 'separate-drive', 'incoming')
+  storage.saveRoot('phone', selected)
+  const originalDevice = rows.get('phone_download_root_device')
+  assert.ok(originalDevice)
+  rows.set('phone_download_root_device', 'unexpected-volume')
+  assert.throws(() => storage.phoneDownloadDirectory(), /drive has changed/)
+  rows.set('phone_download_root_device', originalDevice)
+  assert.equal(storage.phoneDownloadDirectory(), selected)
+  fs.rmSync(selected, { recursive: true, force: true })
+  assert.throws(() => storage.phoneDownloadDirectory(), /drive is unavailable/)
+  storage.saveRoot('phone', '')
 })
 
 test('phone-upload folder uses validated native selection and cannot be set through the web API', () => {
