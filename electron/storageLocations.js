@@ -33,9 +33,15 @@ function phoneCopyDirectory(settings = {}) {
 // Incoming paired-phone files live here; independent of normal downloads
 // and app-private storage. Never silently fall back after an explicit choice.
 function phoneDownloadDirectory(settings = {}) {
-  // Reuse the existing Lokal Phone subfolder on the regular downloads drive
-  // until users explicitly select a dedicated incoming-phone directory.
-  return savedRoot('phone', settings) || phoneCopyDirectory(settings)
+  // Respect the main library location when no download drive is selected.
+  // A dedicated phone folder, when selected, takes precedence over both.
+  let library = settings.music_folder
+  if (!library) {
+    try { library = getDB()?.prepare('SELECT value FROM settings WHERE key = ?')
+      .get('music_folder')?.value } catch {}
+  }
+  return savedRoot('phone', settings) ||
+    phoneCopyDirectory({ ...settings, music_folder: library })
 }
 
 function cacheDirectoryRoot() {
