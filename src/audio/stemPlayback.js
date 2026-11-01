@@ -1,3 +1,5 @@
+import { createEqualizerRack, loadImpulseFile } from './equalizerGraph.mjs'
+import { loadEqState } from './equalizerConfig.mjs'
 // Third-deck, prepared-stem transition for local tracks. Disabled unless the
 // user explicitly enables the experimental setting. No model inference or
 // network streaming happens here; missing clips retain AutoMix's two-deck mix.
@@ -41,26 +43,48 @@ export function createStemPlayback({
   element.preload = 'auto'
   const source = ctx.createMediaElementSource(element)
   const mixGain = ctx.createGain()
-  // Recreate the ordinary track EQ before the mixed-stem volume bus. Without
-  // this, prepared stems bypass the equalizer and change tonal balance every
-  // time a transition starts. Reuse the active deck's live filter values.
+  // Prefer a full copy of the main deck's DSP rack: stems otherwise bypass
+  // preamp, tone, parametric filters, dynamics and FX during transitions.
+  // Limited test/platform contexts without the necessary Web Audio nodes retain
+  // the earlier simple filter clone as a compatibility fallback.
+  const canUseRack = ['createBiquadFilter','createGain','createDynamicsCompressor',
+    'createChannelSplitter','createChannelMerger','createStereoPanner',
+    'createDelay','createConvolver'].every(name => typeof ctx[name] === 'function')
+  const stemRack = canUseRack ? createEqualizerRack(ctx) : null
   const stemFilters = []
   let previous = source
-  if (ctx.createBiquadFilter && Array.isArray(equalizer)) {
-    for (const reference of equalizer) {
-      if (!reference?.frequency || !reference?.gain || !reference?.Q) continue
-      const filter = ctx.createBiquadFilter()
-      filter.type = reference.type
-      filter.frequency.value = reference.frequency.value
-      filter.Q.value = reference.Q.value
-      filter.gain.value = reference.gain.value
-      previous.connect(filter)
-      previous = filter
-      stemFilters.push({ filter, reference })
+  if (stemRack) {
+    source.connect(stemRack.input)
+    stemRack.output.connect(mixGain)
+    stemRack.apply(loadEqState())
+    const state = loadEqState()
+    if (state.enabled && state.convolver.enabled && state.convolver.irPath) {
+      loadImpulseFile().then(async raw => {
+        if (!raw || finished) return
+        const buffer = await ctx.decodeAudioData(raw.slice(0))
+        if (finished) return
+        stemRack.setImpulse(buffer)
+        stemRack.apply(loadEqState())
+      }).catch(() => {})
     }
+  } else {
+    if (ctx.createBiquadFilter && Array.isArray(equalizer)) {
+      for (const reference of equalizer) {
+        if (!reference?.frequency || !reference?.gain || !reference?.Q) continue
+        const filter = ctx.createBiquadFilter()
+        filter.type = reference.type
+        filter.frequency.value = reference.frequency.value
+        filter.Q.value = reference.Q.value
+        filter.gain.value = reference.gain.value
+        previous.connect(filter)
+        previous = filter
+        stemFilters.push({ filter, reference })
+      }
+    }
+    previous.connect(mixGain)
   }
-  previous.connect(mixGain)
-  mixGain.connect(analyser)
+  const onEqChanged = () => stemRack?.apply(loadEqState())
+  if (stemRack && typeof window !== 'undefined') window.addEventListener('lokal:eq-changed', onEqChanged)
   let finished = false
   let startupTimer = null
   let preparedHandoff = false
@@ -86,7 +110,8 @@ export function createStemPlayback({
     incoming.removeEventListener('seeking', onSeek)
     silenceClip()
     try { element.removeAttribute('src'); element.load() } catch {}
-    try { source.disconnect(); mixGain.disconnect() } catch {}
+    try { source.disconnect(); mixGain.disconnect(); stemRack?.output.disconnect() } catch {}
+    if (stemRack && typeof window !== 'undefined') window.removeEventListener('lokal:eq-changed', onEqChanged)
     for (const { filter } of stemFilters) {
       try { filter.disconnect() } catch {}
     }
@@ -130,8 +155,11 @@ export function createStemPlayback({
     if (!Number.isFinite(duration)) return
     // User EQ changes should still apply during the short third-deck window.
     for (const { filter, reference } of stemFilters) {
-      if (filter.gain.value !== reference.gain.value) {
-        filter.gain.setTargetAtTime(reference.gain.value,ctx.currentTime,.025)
+      if (filter.type !== reference.type) filter.type = reference.type
+      for (const name of ['gain','frequency','Q']) {
+        if (filter[name].value !== reference[name].value) {
+          filter[name].setTargetAtTime(reference[name].value,ctx.currentTime,.025)
+        }
       }
     }
     const left = duration - element.currentTime
