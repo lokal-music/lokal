@@ -4,14 +4,15 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { AudioWaveform, Gem, Loader2, Play, RefreshCw, ScanLine, Square } from 'lucide-react'
+import { AudioWaveform, Download, Gem, Loader2, Play, RefreshCw, ScanLine, Square } from 'lucide-react'
 import { api } from '../api'
 import { useTranslation } from '../i18n'
 import { peekCache, useCachedState, usePageReady, writeCache } from '../pageCache'
 import AnimatedNumber from '../components/AnimatedNumber'
 import SectionSwap, { ReadyWhen } from '../components/SectionSwap'
 import { usePlayerStore } from '../store/player'
-import { TIERS, canGetLossless, formatLabel, isSuspect, openLossless, tierOf, verdictText } from '../quality'
+import { TIERS, canGetLossless, formatLabel, isSuspect, openLossless, openLosslessMany, tierOf, verdictText } from '../quality'
+import { canBulkUpgradeQuality, collectQualityUpgradeTracks } from '../qualityBulk'
 
 // Worst to best after "Worth upgrading".
 const FILTERS = [
@@ -60,6 +61,8 @@ export default function Quality() {
   useEffect(() => {
     if (!linkedTier || appliedLinkRef.current === location.key) return
     appliedLinkRef.current = location.key
+    ++bulkRequestRef.current
+    setBulkLoading(null)
     setFilter(linkedTier)
   }, [linkedTier, location.key, setFilter])
   const [rows, setRowsState] = useState(() => peekCache(`quality:rows:${filter}`) || [])
@@ -73,6 +76,13 @@ export default function Quality() {
   const rowsRequestRef = useRef(0)
   usePageReady(!!summary && rowsLoaded)
   const [message, setMessage] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(null) // { tier, scanned, eligible }
+  const bulkRequestRef = useRef(0)
+  const selectQualityFilter = tier => {
+    ++bulkRequestRef.current
+    setBulkLoading(null)
+    setFilter(tier)
+  }
   const playQueue = usePlayerStore(s => s.playQueue)
   const pollRef = useRef(null)
   const wasRunning = useRef(false)
@@ -158,6 +168,37 @@ export default function Quality() {
     poll()
   }
 
+  // The visible Quality table only contains PAGE (200) rows. Fetch the full
+  // selected tier before handing the eligible originals to the existing
+  // review-and-replace dialog. Never auto-replace files on a button press.
+  const getAllLossless = async () => {
+    if (bulkLoading) return
+    const tier = filter
+    const token = ++bulkRequestRef.current
+    const isCurrent = () => bulkRequestRef.current === token
+    setMessage('')
+    setBulkLoading({ tier, scanned: 0, eligible: 0 })
+    try {
+      const eligible = await collectQualityUpgradeTracks(api.qualityList, tier, {
+        isCurrent,
+        onProgress: progress => {
+          if (isCurrent()) setBulkLoading({ tier, ...progress })
+        },
+      })
+      if (!isCurrent() || !eligible) return
+      if (eligible.length) openLosslessMany(eligible)
+      else setMessage(t('No tracks in this category need a lossless upgrade.'))
+    } catch (error) {
+      if (isCurrent()) setMessage(error?.message || t('Could not load songs for lossless upgrades.'))
+    } finally {
+      if (isCurrent()) setBulkLoading(null)
+    }
+  }
+
+  // A filter change or page exit cancels stale pagination results; ongoing
+  // IPC requests may finish, but can no longer open a dialog for another tab.
+  useEffect(() => () => { ++bulkRequestRef.current }, [filter])
+
   const tiers = summary?.tiers || {}
   const total = summary?.total || 0
   const unread = tiers.unknown || 0
@@ -216,7 +257,7 @@ export default function Quality() {
             balanced row on wide desktops. Never leave Suspect orphaned. */}
         <div className="mt-4 grid grid-cols-2 gap-2 @sm:grid-cols-3 @4xl:grid-cols-6">
           {['atmos', 'hires', 'lossless', 'high', 'low', 'suspect'].map(tier => (
-            <StatTile key={tier} tier={tier} count={tiers[tier]} rollFrom={rollFrom(tiers[tier] || 0)} share={shareText(tier)} active={filter === tier} onClick={() => setFilter(tier)} />
+            <StatTile key={tier} tier={tier} count={tiers[tier]} rollFrom={rollFrom(tiers[tier] || 0)} share={shareText(tier)} active={filter === tier} onClick={() => selectQualityFilter(tier)} />
           ))}
         </div>
       </section>
@@ -224,16 +265,30 @@ export default function Quality() {
       <section className="rounded-[24px] border border-border bg-card/60 p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {FILTERS.map(([id, label]) => (
-            <button key={id} onClick={() => setFilter(id)}
+            <button key={id} onClick={() => selectQualityFilter(id)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${filter === id ? 'bg-accent/15 text-accent border border-accent/30' : 'border border-border text-muted hover:text-white'}`}>
               {t(label)}{id === 'upgradable' && tiers.upgradable ? ` · ${tiers.upgradable.toLocaleString()}` : ''}
             </button>
           ))}
           {rows.length > 0 && rowsFor === filter && (
-            <button onClick={() => playQueue(rows, 0, { type: 'quality', id: filter, name: `Audio quality: ${FILTERS.find(f => f[0] === filter)?.[1]}` })}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-white">
-              <Play size={11} fill="currentColor" /> {t("Play these")}
-            </button>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {canBulkUpgradeQuality(filter, rows) && (
+                <button type="button" onClick={getAllLossless} disabled={!!bulkLoading}
+                  title={t("Find lossless replacements for every eligible song in this quality category")}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1 text-xs font-semibold text-accent transition-colors hover:bg-accent/10 disabled:opacity-50">
+                  {bulkLoading?.tier === filter
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : <Download size={11} />}
+                  {bulkLoading?.tier === filter
+                    ? t('Finding {count} songs…', { count: bulkLoading.scanned.toLocaleString() })
+                    : t('Get all in lossless')}
+                </button>
+              )}
+              <button type="button" onClick={() => playQueue(rows, 0, { type: 'quality', id: filter, name: `Audio quality: ${FILTERS.find(f => f[0] === filter)?.[1]}` })}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-white">
+                <Play size={11} fill="currentColor" /> {t("Play these")}
+              </button>
+            </div>
           )}
         </div>
         {/* Switching filter: the new list fades in once its rows are in (not the

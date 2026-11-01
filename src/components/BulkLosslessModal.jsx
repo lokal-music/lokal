@@ -18,6 +18,7 @@ import { bestReplacement, losslessCandidates, replacementSources, searchReplacem
 import { plural } from '../plural'
 
 const SEARCHES_AT_ONCE = 3
+const REVIEW_ROWS_PER_PAGE = 100
 const fmtTime = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`
 
 export default function BulkLosslessModal() {
@@ -26,12 +27,16 @@ export default function BulkLosslessModal() {
   const [sources, setSources] = useState(null) // null: loading; { usable, setup }
   const [rows, setRows] = useState({}) // id -> { status: 'searching' | 'found' | 'none', match, checked, result, error }
   const [replacing, setReplacing] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(REVIEW_ROWS_PER_PAGE)
   const run = useRef(0)
 
   useEffect(() => {
     const open = (event) => {
       const tracks = Array.isArray(event.detail) ? event.detail : []
-      if (tracks.length) setBatch(losslessCandidates(tracks))
+      if (tracks.length) {
+        setVisibleCount(REVIEW_ROWS_PER_PAGE)
+        setBatch(losslessCandidates(tracks))
+      }
     }
     window.addEventListener('lokal:lossless-many', open)
     return () => window.removeEventListener('lokal:lossless-many', open)
@@ -127,7 +132,7 @@ export default function BulkLosslessModal() {
 
         <div className="max-h-[50vh] space-y-1 overflow-y-auto pr-1">
           {!eligible.length && <p className="py-6 text-center text-sm text-muted">{t("None of these songs can be upgraded: they're already lossless, streamed or missing.")}</p>}
-          {eligible.map(track => {
+          {eligible.slice(0, visibleCount).map(track => {
             const row = rows[track.id] || {}
             const match = row.match
             return (
@@ -159,6 +164,15 @@ export default function BulkLosslessModal() {
               </div>
             )
           })}
+          {eligible.length > visibleCount && (
+            <div className="flex items-center justify-center gap-3 py-3 text-xs text-muted">
+              <span>{t('Showing {shown} of {total}', { shown: visibleCount.toLocaleString(), total: eligible.length.toLocaleString() })}</span>
+              <button type="button" onClick={() => setVisibleCount(count => count + REVIEW_ROWS_PER_PAGE)}
+                className="rounded-lg border border-border px-3 py-1.5 hover:border-accent/40 hover:text-white">
+                {t('Show next {count}', { count: Math.min(REVIEW_ROWS_PER_PAGE, eligible.length - visibleCount) })}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-border pt-3">
