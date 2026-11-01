@@ -1532,7 +1532,7 @@ activeCategory === 'data' ? usersTried
           <Row label={t("Incoming phone files")} stacked desc={t("Choose where original audio uploaded from a paired phone is stored. Existing transferred files are never moved or deleted.")}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 break-all text-xs text-white">
-                {settings.phone_download_root || storageLocations?.defaultPhone || t("Lokal application data / phone-downloads")}
+                {settings.phone_download_root || storageLocations?.defaultPhone || t("Downloads / Lokal Phone")}
               </span>
               <button type="button" disabled={!!storageBusy} onClick={() => changeStorageLocation('phone')}
                 className="px-3 py-1.5 bg-card border border-border rounded-lg text-xs text-white hover:border-accent/40 disabled:opacity-40">
