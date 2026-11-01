@@ -46,6 +46,15 @@ test('download target honors an explicit output, then the selected disk, then th
   assert.equal(storage.downloadDirectory({ music_folder: music }), music)
 })
 
+test('paired phone originals follow the user-selected download disk', () => {
+  const chosen = path.join(root, 'external', 'mobile-inbound')
+  storage.saveRoot('downloads', chosen)
+  assert.equal(storage.phoneCopyDirectory(), path.join(chosen, 'Lokal Phone'))
+  storage.saveRoot('downloads', '')
+  assert.equal(storage.phoneCopyDirectory({ music_folder: path.join(root, 'music') }),
+    path.join(root, 'music', 'Lokal Phone'))
+})
+
 test('cache location is independent of downloads, database and installation directory', () => {
   const folder = path.join(root, 'other-disk', 'cache')
   assert.equal(storage.saveRoot('cache', folder), folder)
