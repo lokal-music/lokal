@@ -55,7 +55,7 @@ function ResponsePreview({state,onBandChange}){
   }
   return <div className="relative rounded-xl border border-border/70 bg-black/20 p-3">
     <div className="flex justify-between text-[10px] text-muted mb-2"><span>+24 dB</span><span>Live frequency response</span><span>−24 dB</span></div>
-    <svg viewBox="0 0 720 132" preserveAspectRatio="none" className="h-36 w-full overflow-visible" role="img" aria-label="Equalizer frequency response; drag parametric nodes to adjust frequency and gain">
+    <svg viewBox="0 0 720 132" preserveAspectRatio="none" className="h-36 w-full overflow-visible" role="group" aria-label="Equalizer frequency response; drag parametric nodes to adjust frequency and gain">
       {[33,66,99].map(y=><line key={y} x1="0" x2="720" y1={y} y2={y} stroke="currentColor" strokeOpacity=".14" strokeDasharray={y===66?'':'3 5'} />)}
       {[70,180,290,400,510,620].map(x=><line key={x} x1={x} x2={x} y1="0" y2="132" stroke="currentColor" strokeOpacity=".08" />)}
       <path d={path} fill="none" stroke="#e8ff57" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
@@ -84,6 +84,7 @@ function ResponsePreview({state,onBandChange}){
 }
 export default function EqualizerModal({open,onClose,onChange}){
   const [state,setState]=useState(()=>loadEqState())
+  const stateRef=useRef(state)
   const [advanced,setAdvanced]=useState(false)
   const [presetsOpen,setPresetsOpen]=useState(false)
   const [custom,setCustom]=useState(loadCustom)
@@ -94,14 +95,16 @@ export default function EqualizerModal({open,onClose,onChange}){
   const [message,setMessage]=useState('')
   const fileRef=useRef(null)
   const irRef=useRef(null)
-  useEffect(()=>{if(open){const latest=loadEqState();setState(latest);setMessage('')}},[open])
+  useEffect(()=>{if(open){const latest=loadEqState();stateRef.current=latest;setState(latest);setMessage('')}},[open])
   const change=(next)=>{
-    setState(previous=>{
-      const updated=typeof next==='function'?next(previous):{...previous,...next}
-      const saved=saveEqState(updated)
-      onChange?.(saved)
-      return saved
-    })
+    // Persist before the React render. This avoids side effects inside a state
+    // updater (which StrictMode may invoke twice) and IR-reload races.
+    const current=stateRef.current
+    const updated=typeof next==='function'?next(current):{...current,...next}
+    const saved=saveEqState(updated)
+    stateRef.current=saved
+    setState(saved)
+    onChange?.(saved)
   }
   const nested=(section,key,value)=>change(previous=>({...previous,[section]:{...previous[section],[key]:value}}))
   const saveCustom=()=>{
