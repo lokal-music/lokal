@@ -5,7 +5,6 @@ import { EQ_FREQUENCIES, EQ_PRESETS, EQ_TYPES, clamp, defaults, loadEqState, sav
 import { storeImpulseFile, clearImpulseFile } from '../audio/equalizerGraph.mjs'
 
 const CUSTOM_PRESETS='lokal-eq-custom-presets'
-const AUTOEQ_URL='https://raw.githubusercontent.com/lokal-music/lokal-mobile/main/assets/autoeq/autoeq_catalog.json'
 const BAND_LABELS=['32','64','125','250','500','1k','2k','4k','8k','16k']
 const css={
   panel:'rounded-xl border border-border/70 bg-card/60 p-4 sm:p-5',
@@ -124,9 +123,7 @@ export default function EqualizerModal({open,onClose,onChange}){
     if(catalog||loadingCatalog)return
     setLoadingCatalog(true)
     try{
-      const res=await fetch(AUTOEQ_URL)
-      if(!res.ok)throw new Error('Catalog unavailable ('+res.status+')')
-      const data=await res.json()
+      const data=(await import('../audio/autoeqCatalog.json')).default
       if(!Array.isArray(data))throw new Error('Invalid AutoEQ catalog')
       setCatalog(data)
     }catch(e){setMessage('AutoEQ catalog: '+e.message)}finally{setLoadingCatalog(false)}
