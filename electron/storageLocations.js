@@ -32,8 +32,10 @@ function phoneCopyDirectory(settings = {}) {
 
 // Incoming paired-phone files live here; independent of normal downloads
 // and app-private storage. Never silently fall back after an explicit choice.
-function phoneDownloadDirectory() {
-  return savedRoot('phone') || path.join(getStorageDir(), 'phone-downloads')
+function phoneDownloadDirectory(settings = {}) {
+  // Reuse the existing Lokal Phone subfolder on the regular downloads drive
+  // until users explicitly select a dedicated incoming-phone directory.
+  return savedRoot('phone', settings) || phoneCopyDirectory(settings)
 }
 
 function cacheDirectoryRoot() {
@@ -69,4 +71,4 @@ function saveRoot(kind, selected) {
   return root
 }
 
-module.exports = { KEYS, savedRoot, downloadDirectory, phoneCopyDirectory, cacheDirectoryRoot, validateWritableDirectory, saveRoot }
+module.exports = { KEYS, savedRoot, downloadDirectory, phoneCopyDirectory, phoneDownloadDirectory, cacheDirectoryRoot, validateWritableDirectory, saveRoot }
