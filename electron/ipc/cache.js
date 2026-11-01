@@ -33,6 +33,8 @@ function registerCacheHandlers(ipcMain) {
   ipcMain.handle('storage:locations', () => ({
     downloads: storage.savedRoot('downloads'),
     cache: storage.savedRoot('cache'),
+    phone: storage.savedRoot('phone'),
+    defaultPhone: storage.phoneDownloadDirectory(),
     defaultDownloads: storage.downloadDirectory({}),
     defaultCache: db.getStorageDir(),
   }))
@@ -40,9 +42,11 @@ function registerCacheHandlers(ipcMain) {
     if (!storage.KEYS[kind]) return { error: 'Unknown storage location' }
     try {
       const options = {
-        title: kind === 'cache' ? 'Select app cache location' : 'Select download location',
+        title: kind === 'cache' ? 'Select app cache location' :
+          kind === 'phone' ? 'Select paired-phone files destination' : 'Select download location',
         defaultPath: storage.savedRoot(kind) ||
-          (kind === 'cache' ? db.getStorageDir() : storage.downloadDirectory({})),
+          (kind === 'cache' ? db.getStorageDir() :
+            kind === 'phone' ? storage.phoneDownloadDirectory() : storage.downloadDirectory({})),
         properties: ['openDirectory', 'createDirectory'],
       }
       const owner = BrowserWindow.fromWebContents(event.sender)
