@@ -1,4 +1,6 @@
 import { NativeAudioBridge, readOutputPreferences, saveOutputPreferences } from './audio/nativeOutput'
+import { createEqualizerRack, loadImpulseFile } from './audio/equalizerGraph.mjs'
+import { loadEqState } from './audio/equalizerConfig.mjs'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import { effectiveReplayGainMode, replayGainMultiplier } from './audio/replayGain.mjs'
 import { readCrossfadeSettings, fadeCurve, crossfadeDurations, CROSSFADE_MIN_S } from './audio/crossfade'
@@ -724,6 +726,7 @@ export default function App() {
   const lastFlushedTrackIdRef = useRef(null)
   const artworkCacheRef = useRef({})
   const eqFiltersRef = useRef([])
+  const eqRacksRef = useRef(null)
   const activeElementRef = useRef('primary')
   const pauseSuppressRef = useRef(false)
   const crossfadeTokenRef = useRef(0)
@@ -1228,25 +1231,12 @@ export default function App() {
     }
     ctx.addEventListener('statechange', keepAudioRunning)
 
-    const nodes = EQ_AUDIO_BANDS.map((band) => {
-      const f = ctx.createBiquadFilter()
-      f.type = band.type
-      f.frequency.value = band.frequency
-      f.Q.value = band.q
-      f.gain.value = 0
-      return f
-    })
-
-    const cfNodes = EQ_AUDIO_BANDS.map((band, i) => {
-      const f = ctx.createBiquadFilter()
-      f.type = band.type
-      f.frequency.value = band.frequency
-      f.Q.value = band.q
-      f.gain.value = nodes[i].gain.value
-      return f
-    })
-
-    eqFiltersRef.current = { primary: nodes, cf: cfNodes }
+    // Both decks run identical DSP through independent racks so their EQ and
+    // dynamics continue smoothly across track transitions.
+    const primaryEqRack = createEqualizerRack(ctx)
+    const cfEqRack = createEqualizerRack(ctx)
+    eqRacksRef.current = { primary: primaryEqRack, cf: cfEqRack }
+    eqFiltersRef.current = { primary: primaryEqRack.filters, cf: cfEqRack.filters }
 
     const primarySource = ctx.createMediaElementSource(audioRef.current)
     const cfSource = ctx.createMediaElementSource(cfAudioRef.current)
@@ -1294,41 +1284,48 @@ export default function App() {
       cfSource.connect(cfReplayGain)
       cfReplayGain.connect(analyser)
     } else {
-      let prev = primarySource
-      for (const n of nodes) { prev.connect(n); prev = n }
-      prev.connect(primaryReplayGain)
+      primarySource.connect(primaryEqRack.input)
+      primaryEqRack.output.connect(primaryReplayGain)
       primaryReplayGain.connect(primaryGain)
       primaryGain.connect(primaryFade)
       primaryFade.connect(primaryMix)
       primaryMix.connect(analyser)
       analyser.connect(ctx.destination)
 
-      let cfPrev = cfSource
-      for (const n of cfNodes) { cfPrev.connect(n); cfPrev = n }
-      cfPrev.connect(cfReplayGain)
+      cfSource.connect(cfEqRack.input)
+      cfEqRack.output.connect(cfReplayGain)
       cfReplayGain.connect(cfGain)
       cfGain.connect(cfFade)
       cfFade.connect(cfMix)
       cfMix.connect(analyser)
     }
 
-    try {
-      const stored = normalizeEqGains(JSON.parse(localStorage.getItem('lokal-eq') || '[]'))
-      stored.forEach((v, i) => {
-        const shaped = shapeEqGain(v)
-        if (nodes[i]) nodes[i].gain.value = shaped
-        if (cfNodes[i]) cfNodes[i].gain.value = shaped
-      })
-    } catch (err) {
+    const applyEqSettings = state => {
+      primaryEqRack.apply(state)
+      cfEqRack.apply(state)
     }
-
+    applyEqSettings(loadEqState())
+    // Called by the EQ dialog and retained for older desktop integrations.
     window.__lokaleq = {
-      setGain: (i, v) => {
-        const shaped = shapeEqGain(v)
-        if (nodes[i]) nodes[i].gain.value = shaped
-        if (cfNodes[i]) cfNodes[i].gain.value = shaped
-      }
+      apply: applyEqSettings,
+      setGain: (index, gain) => {
+        const updated = loadEqState()
+        if (index < 0 || index >= updated.graphicGainsDb.length) return
+        updated.graphicGainsDb[index] = gain
+        applyEqSettings(updated)
+      },
     }
+    const reloadImpulse = async () => {
+      const raw = await loadImpulseFile().catch(() => null)
+      const buffer = raw ? await ctx.decodeAudioData(raw.slice(0)) : null
+      primaryEqRack.setImpulse(buffer)
+      cfEqRack.setImpulse(buffer)
+      applyEqSettings(loadEqState())
+    }
+    reloadImpulse().catch(error => console.warn('[equalizer] IR failed:', error))
+    window.addEventListener('lokal:eq-ir-changed', () => {
+      reloadImpulse().catch(error => console.warn('[equalizer] IR reload failed:', error))
+    })
 
     if (window.electron?.nativeAudio && !isIOS) {
       nativeAudioRef.current = new NativeAudioBridge(ctx, analyser, window.electron.nativeAudio, status => {
