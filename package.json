@@ -18,6 +18,7 @@
     "native:prepare": "node scripts/prepare-native.js",
     "test:home-greeting": "node --test scripts/home-greeting.test.mjs",
     "test:state-persistence": "node --test scripts/state-persistence.test.mjs",
+    "test:equalizer": "node --test scripts/equalizer-port.test.mjs",
     "test:search-scope": "node --test scripts/search-source-scope.test.mjs",
     "test:home-cover-flow": "node --test scripts/cover-flow.test.mjs scripts/home-cover-choice.test.mjs",
     "test:motion-covers": "node --test scripts/motion-cover-resolution.test.mjs",
