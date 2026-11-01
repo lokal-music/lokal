@@ -3,6 +3,7 @@ import { Activity, ChevronDown, ChevronUp, Download, FolderOpen, Headphones, Plu
 import Modal from './Modal'
 import { EQ_FREQUENCIES, EQ_PRESETS, EQ_TYPES, clamp, defaults, loadEqState, saveEqState, applyPreset, parseEqPreset, presetFromState, exportEqPresetText } from '../audio/equalizerConfig.mjs'
 import { storeImpulseFile, clearImpulseFile } from '../audio/equalizerGraph.mjs'
+import { equalizerResponseDb } from '../audio/equalizerResponse.mjs'
 
 const CUSTOM_PRESETS='lokal-eq-custom-presets'
 const BAND_LABELS=['32','64','125','250','500','1k','2k','4k','8k','16k']
@@ -35,45 +36,50 @@ function downloadText(name,body,mime){
   const a=document.createElement('a');a.href=url;a.download=name;a.click()
   setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
-function ResponsePreview({state}){
+function ResponsePreview({state,onBandChange}){
+  const points=useMemo(()=>Array.from({length:181},(_,i)=>20*Math.pow(1000,i/180)),[])
   const path=useMemo(()=>{
-    const bands=state.mode==='graphic'
-      ?state.graphicGainsDb.map((gain,i)=>({frequencyHz:EQ_FREQUENCIES[i],gainDb:gain,enabled:true,q:1}))
-      :state.parametricBands
-    const width=720,height=132
-    const xhz=x=>20*Math.pow(1000,x/width)
-    const rows=[]
-    for(let x=0;x<=width;x+=4){
-      const f=xhz(x), lf=Math.log2(f)
-      let y=state.enabled?state.preampDb:0
-      if(state.enabled){
-        for(const b of bands){
-          if(!b.enabled)continue
-          // Smooth preview of each band's contribution. Filter processing is
-          // performed by the Web Audio biquads, not by this visual estimation.
-          const spread=b.q?Math.max(.16,1/b.q):1
-          const distance=(lf-Math.log2(b.frequencyHz))/spread
-          const weight=b.type==='lowShelf' ? 1/(1+Math.exp(distance*3))
-            :b.type==='highShelf'?1/(1+Math.exp(-distance*3))
-            :Math.exp(-.5*distance*distance)
-          y+=(b.gainDb||0)*weight*1
-        }
-        y+=state.bassDb/(1+Math.exp((lf-Math.log2(120))*3))
-        y+=state.midDb*Math.exp(-.5*Math.pow((lf-Math.log2(1000))/1.6,2))
-        y+=state.trebleDb/(1+Math.exp(-(lf-Math.log2(6500))*3))
-      }
-      rows.push((x===0?'M':'L')+x+' '+Math.max(2,Math.min(height-2,height/2-y*2.4)).toFixed(2))
-    }
-    return rows.join(' ')
-  },[state])
+    const db=equalizerResponseDb(state,points)
+    return db.map((y,i)=>(i===0?'M':'L')+(i*4)+' '+clamp(66-y*2.4,2,130).toFixed(2)).join(' ')
+  },[state,points])
+  const dragging=useRef(null)
+  const handlePointer=(e,index)=>{
+    const rect=e.currentTarget.ownerSVGElement.getBoundingClientRect()
+    if(!rect.width||!rect.height)return
+    const x=clamp((e.clientX-rect.left)/rect.width,0,1)
+    const y=clamp((e.clientY-rect.top)/rect.height,0,1)
+    onBandChange?.(index,{
+      frequencyHz:Math.round(20*Math.pow(1000,x)),
+      gainDb:Math.round(clamp((.5-y)*55,-20,20)*2)/2
+    })
+  }
   return <div className="relative rounded-xl border border-border/70 bg-black/20 p-3">
-    <div className="flex justify-between text-[10px] text-muted mb-2"><span>+24 dB</span><span>Frequency response preview</span><span>−24 dB</span></div>
-    <svg viewBox="0 0 720 132" preserveAspectRatio="none" className="h-32 w-full" role="img" aria-label="Approximate equalizer response curve">
+    <div className="flex justify-between text-[10px] text-muted mb-2"><span>+24 dB</span><span>Live frequency response</span><span>−24 dB</span></div>
+    <svg viewBox="0 0 720 132" preserveAspectRatio="none" className="h-36 w-full overflow-visible" role="img" aria-label="Equalizer frequency response; drag parametric nodes to adjust frequency and gain">
       {[33,66,99].map(y=><line key={y} x1="0" x2="720" y1={y} y2={y} stroke="currentColor" strokeOpacity=".14" strokeDasharray={y===66?'':'3 5'} />)}
       {[70,180,290,400,510,620].map(x=><line key={x} x1={x} x2={x} y1="0" y2="132" stroke="currentColor" strokeOpacity=".08" />)}
       <path d={path} fill="none" stroke="#e8ff57" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+      {state.mode==='parametric'&&state.parametricBands.map((b,i)=>b.enabled&&<circle
+        key={i} cx={clamp(Math.log(b.frequencyHz/20)/Math.log(1000)*720,0,720)} cy={clamp(66-b.gainDb*2.4,3,129)}
+        r="7" stroke="#1e2312" strokeWidth="2.5" fill="#e8ff57"
+        style={{cursor:state.enabled?'grab':'not-allowed',touchAction:'none'}}
+        tabIndex={0} role="slider" aria-label={'Band '+(i+1)+' frequency and gain'}
+        aria-valuemin={-20} aria-valuemax={20} aria-valuenow={b.gainDb}
+        aria-valuetext={b.frequencyHz+' Hz, '+b.gainDb+' dB'}
+        onPointerDown={e=>{if(!state.enabled)return;dragging.current=i;e.currentTarget.setPointerCapture(e.pointerId)}}
+        onPointerMove={e=>{if(dragging.current===i)handlePointer(e,i)}}
+        onPointerUp={e=>{dragging.current=null;e.currentTarget.releasePointerCapture(e.pointerId)}}
+        onPointerCancel={()=>{dragging.current=null}}
+        onKeyDown={e=>{
+          if(!state.enabled||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return
+          e.preventDefault()
+          if(e.key==='ArrowUp'||e.key==='ArrowDown')onBandChange?.(i,{gainDb:clamp(b.gainDb+(e.key==='ArrowUp'?.5:-.5),-20,20)})
+          else onBandChange?.(i,{frequencyHz:clamp(Math.round(b.frequencyHz*(e.key==='ArrowRight'?1.1:1/1.1)),20,20000)})
+        }}
+      />)}
     </svg>
     <div className="mt-1 flex justify-between text-[10px] text-muted"><span>20 Hz</span><span>100 Hz</span><span>1 kHz</span><span>10 kHz</span><span>20 kHz</span></div>
+    {state.mode==='parametric'&&<p className="mt-2 text-[10px] text-muted">Drag the nodes to change frequency and gain. Use arrow keys for fine adjustments.</p>}
   </div>
 }
 export default function EqualizerModal({open,onClose,onChange}){
@@ -160,6 +166,8 @@ export default function EqualizerModal({open,onClose,onChange}){
   }
   const updateBand=(i,key,value)=>change(previous=>({...previous,activePresetName:null,
     parametricBands:previous.parametricBands.map((b,j)=>j===i?{...b,[key]:value}:b)}))
+  const moveBand=(i,values)=>change(previous=>({...previous,activePresetName:null,
+    parametricBands:previous.parametricBands.map((b,j)=>j===i?{...b,...values}:b)}))
   const addBand=()=>change(previous=>({...previous,activePresetName:null,
     parametricBands:[...previous.parametricBands,{enabled:true,frequencyHz:1000,gainDb:0,q:1,type:'peaking'}]}))
   return <Modal open={open} onClose={onClose} title="Equalizer" width="max-w-5xl">
@@ -195,7 +203,7 @@ export default function EqualizerModal({open,onClose,onChange}){
           {!loadingCatalog&&catalog&&autoeqMatches.length===0&&<p className={css.muted}>No matching profiles.</p>}
         </div>}
       </div>
-      <ResponsePreview state={state}/>
+      <ResponsePreview state={state} onBandChange={moveBand}/>
       {state.mode==='graphic'
         ?<div className={css.panel}>
           <SectionTitle side={<button className={css.button} onClick={()=>change({graphicGainsDb:Array(10).fill(0),preampDb:0,activePresetName:null})}><RotateCcw size={13} className="inline mr-1"/> Reset bands</button>}>10-band graphic EQ</SectionTitle>
