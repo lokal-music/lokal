@@ -146,8 +146,7 @@ export default function EqualizerModal({open,onClose,onChange}){
       const ctx=new (window.AudioContext||window.webkitAudioContext)()
       try {await ctx.decodeAudioData(bytes.slice(0))} finally {await ctx.close()}
       await storeImpulseFile(file)
-      nested('convolver','irDisplayName',file.name)
-      // Update stored convolver details together to avoid stale state.
+      // Save the impulse details together so reloading remains atomic.
       change(previous=>({...previous,convolver:{...previous.convolver,irPath:'indexeddb:active',
         irDisplayName:file.name,enabled:true}}))
       window.dispatchEvent(new Event('lokal:eq-ir-changed'))
@@ -241,9 +240,9 @@ export default function EqualizerModal({open,onClose,onChange}){
         </div>
         <div className={css.panel}><SectionTitle side={<EqToggle label="Enable FX" checked={state.fx.enabled} onChange={v=>nested('fx','enabled',v)}/>}>Creative FX and balance</SectionTitle>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[['balance','Balance',-1,1,.05,''],['width','Stereo width',0,2,.05,'×'],['damp','Damping',0,1,.05,''],['filterHz','Filter',200,18000,100,'Hz'],['delayMs','Delay',10,1600,10,'ms'],['size','Size',0,1,.05,''],['mix','Wet mix',0,1,.05,''],['feedback','Feedback',0,.95,.05,'']].map(([key,label,min,max,step,unit])=><EqSlider key={key} label={label} value={state.fx[key]} min={min} max={max} step={step} unit={unit} onChange={v=>nested('fx',key,v)}/>)}
+            {[['balance','Balance',-1,1,.05,''],['tempo','Tempo',.5,2,.01,'×'],['width','Stereo width',0,2,.05,'×'],['damp','Damping',0,1,.05,''],['filterHz','Filter',200,18000,100,'Hz'],['delayMs','Delay',10,1600,10,'ms'],['size','Size',0,1,.05,''],['mix','Wet mix',0,1,.05,''],['feedback','Feedback',0,.95,.05,'']].map(([key,label,min,max,step,unit])=><EqSlider key={key} label={label} value={state.fx[key]} min={min} max={max} step={step} unit={unit} onChange={v=>nested('fx',key,v)}/>)}
           </div>
-          <p className="mt-4 text-xs text-muted">Tempo is managed by desktop playback-speed controls. The desktop effect uses Web Audio delay and stereo processing rather than the mobile Rust FX algorithm.</p>
+          <p className="mt-4 text-xs text-muted">Tempo multiplies the normal playback-speed setting while preserving pitch. Desktop delay and stereo effects use Web Audio, so their algorithms differ from mobile's Rust FX.</p>
         </div>
         <div className={css.panel}><SectionTitle side={<EqToggle label="Enable convolver" checked={state.convolver.enabled} onChange={v=>nested('convolver','enabled',v)}/>}>Convolver</SectionTitle>
           <div className="flex flex-wrap items-center gap-2 mb-4">
