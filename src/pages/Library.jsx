@@ -315,6 +315,7 @@ export default function Library() {
             <option value="added_at DESC">{t("Recently Added")}</option>
             <option value="title ASC">{t("Title A-Z")}</option>
             <option value="artist ASC">{t("Artist A-Z")}</option>
+            <option value="track_num ASC">{t("Track #")}</option>
             <option value="play_count DESC">{t("Most Played")}</option>
             <option value="duration DESC">{t("Longest")}</option>
           </select>
