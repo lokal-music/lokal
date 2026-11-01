@@ -4,6 +4,7 @@ const { randomUUID, createHash } = require('crypto')
 const { Transform } = require('stream')
 const { pipeline } = require('stream/promises')
 const { getDB, getStorageDir } = require('../electron/ipc/db')
+const { phoneCopyDirectory } = require('../electron/storageLocations')
 const { findPhonePlaceholder } = require('./linkUploadMatch')
 const { phoneFileName, reservePhoneDestination } = require('./phoneFileNaming')
 
@@ -17,7 +18,9 @@ async function receivePhoneFile(req,res) {
   if(!metadata || typeof metadata!=='object' || Array.isArray(metadata))return res.status(400).json({error:'Invalid file metadata.'})
   const extension=String(metadata.extension||'').toLowerCase()
   if(!['flac','mp3','m4a','aac','ogg','opus','wav','aiff','aif','alac','ape','wv','dsf','dff','webm'].includes(extension))return res.status(400).json({error:'Unsupported audio format.'})
-  const directory=path.join(getStorageDir(),'phone-downloads')
+  // Use the downloads folder selected in Settings, so phone-to-PC copies
+  // don't silently fill the application-data volume.
+  const directory=phoneCopyDirectory()
   await fs.ensureDir(directory)
   const id=randomUUID(),partial=path.join(directory,`.${id}.${extension}.part`)
   let destination=null,stored=false,bytes=0
