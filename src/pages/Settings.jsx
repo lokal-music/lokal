@@ -1509,7 +1509,7 @@ activeCategory === 'data' ? usersTried
           </div>
         </Row>
         {api.isElectron && (
-          <Row label={t("Download Location")} stacked desc={t("Choose a drive and folder for new music downloads. Existing files are not moved. The Download Folder option below creates a subfolder inside this location.")}>
+          <Row label={t("Download Location")} stacked desc={t("Choose a drive and folder for new downloads and incoming phone files. Linked phone originals are stored under Lokal Phone inside this location. Existing files are not moved. The Download Folder option below creates a subfolder inside this location.")}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 break-all text-xs text-white">
                 {settings.download_root || t("Default music library location")}
