@@ -112,3 +112,22 @@ test('same title and duration from different album owners remain separate', () =
   assert.deepEqual(visible(db), ['pc', 'phone'])
   db.close()
 })
+
+test('unrelated compilation tracks with the same title/duration remain separate', () => {
+  const { db, insert } = fixture()
+  insert('desktop', 'Intro', 'Singer Alpha', 'Various Hits', 72, null, 'Various Artists')
+  insert('phone', 'Intro', 'Singer Beta', 'Various Hits', 72, 'mobile', 'Various Artists')
+  assert.deepEqual(visible(db), ['desktop', 'phone'])
+  db.close()
+})
+
+test('shared credited album owner allows differently ordered collaboration credits', () => {
+  const { db, insert } = fixture()
+  insert('desktop', 'Collaboration', 'First Artist, Second Artist',
+    'Collaboration Album', 235, null, 'Second Artist')
+  insert('phone', 'Collaboration', 'Second Artist, First Artist',
+    'Collaboration Album', 235, 'mobile', 'Second Artist')
+  assert.deepEqual(visible(db), ['desktop'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
+  db.close()
+})
