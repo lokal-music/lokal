@@ -5,7 +5,7 @@ const path = require('path')
 const os = require('os')
 const { getDB, getStorageDir } = require('./ipc/db')
 
-const KEYS = Object.freeze({ downloads: 'download_root', cache: 'cache_root' })
+const KEYS = Object.freeze({ downloads: 'download_root', cache: 'cache_root', phone: 'phone_download_root' })
 
 function savedRoot(kind, settings) {
   const key = KEYS[kind]
@@ -28,6 +28,12 @@ function downloadDirectory(settings = {}, explicitOutputDir = '') {
  // never the private application database directory.
 function phoneCopyDirectory(settings = {}) {
   return path.join(downloadDirectory(settings), 'Lokal Phone')
+}
+
+// Incoming paired-phone files live here; independent of normal downloads
+// and app-private storage. Never silently fall back after an explicit choice.
+function phoneDownloadDirectory() {
+  return savedRoot('phone') || path.join(getStorageDir(), 'phone-downloads')
 }
 
 function cacheDirectoryRoot() {
