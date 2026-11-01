@@ -404,7 +404,7 @@ export default function Settings() {
         : api.chooseStorageLocation(kind))
       if (result?.error) throw new Error(result.error)
       if (!result || result.canceled) return
-      const key = kind === 'cache' ? 'cache_root' : 'download_root'
+      const key = kind === 'cache' ? 'cache_root' : kind === 'phone' ? 'phone_download_root' : 'download_root'
       // IPC has already validated the drive and committed to SQLite.
       // Avoid a second unvalidated settings write.
       touchedSettingsRef.current.add(key)
@@ -1520,6 +1520,26 @@ activeCategory === 'data' ? usersTried
               </button>
               {!!settings.download_root && (
                 <button type="button" disabled={!!storageBusy} onClick={() => changeStorageLocation('downloads', true)}
+                  className="px-3 py-1.5 bg-card border border-border rounded-lg text-xs text-muted hover:text-white disabled:opacity-40">
+                  {t("Use default")}
+                </button>
+              )}
+            </div>
+            {!!storageError && <p role="alert" className="text-xs text-red-400">{storageError}</p>}
+          </Row>
+        )}
+        {api.isElectron && (
+          <Row label={t("Incoming phone files")} stacked desc={t("Choose where original audio uploaded from a paired phone is stored. Existing transferred files are never moved or deleted.")}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 break-all text-xs text-white">
+                {settings.phone_download_root || storageLocations?.defaultPhone || t("Lokal application data / phone-downloads")}
+              </span>
+              <button type="button" disabled={!!storageBusy} onClick={() => changeStorageLocation('phone')}
+                className="px-3 py-1.5 bg-card border border-border rounded-lg text-xs text-white hover:border-accent/40 disabled:opacity-40">
+                {storageBusy === 'phone' ? t("Selecting…") : t("Choose folder")}
+              </button>
+              {!!settings.phone_download_root && (
+                <button type="button" disabled={!!storageBusy} onClick={() => changeStorageLocation('phone', true)}
                   className="px-3 py-1.5 bg-card border border-border rounded-lg text-xs text-muted hover:text-white disabled:opacity-40">
                   {t("Use default")}
                 </button>
