@@ -68,7 +68,9 @@ export function loadEqState(storage=globalThis.localStorage) {
   let legacy=[]
   try { legacy=JSON.parse(storage.getItem('lokal-eq')||'[]') } catch {}
   if(legacy.length===5) legacy=legacy.flatMap(x=>[x,x])
-  return normalizeEqState({graphicGainsDb:legacy})
+  // The old desktop graph multiplied gains by 0.72. Convert the stored
+  // settings once so existing users do not hear a volume/tonality jump.
+  return normalizeEqState({graphicGainsDb:legacy.map(x=>Number(x)*.72)})
 }
 export function saveEqState(state,storage=globalThis.localStorage,dispatch=true) {
   const normalized=normalizeEqState(state)
