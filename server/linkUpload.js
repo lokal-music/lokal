@@ -21,7 +21,15 @@ async function receivePhoneFile(req,res) {
   // Honor the dedicated incoming-phone folder; otherwise preserve the old
   // Lokal Phone subfolder on the user's normal download drive.
   const directory=phoneDownloadDirectory()
-  await fs.ensureDir(directory)
+  // Network drives can disappear after a valid folder was selected.
+  // Respond explicitly rather than letting a rejected async handler hang.
+  try { await fs.ensureDir(directory) }
+  catch (error) {
+    return res.status(503).json({
+      error: 'Phone copy destination is unavailable: ' +
+        (error?.message || String(error)),
+    })
+  }
   const id=randomUUID(),partial=path.join(directory,`.${id}.${extension}.part`)
   let destination=null,stored=false,bytes=0
   const hash=createHash('sha256')
