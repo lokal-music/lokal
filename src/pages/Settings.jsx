@@ -1758,7 +1758,11 @@ activeCategory === 'data' ? usersTried
               onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
               aria-label={t("Playback speed")}
               className="w-32 accent-accent cursor-pointer" />
-            <span className="w-12 text-right text-xs font-display tabular-nums text-white">{playbackSpeed.toFixed(2)}×</span>
+            <button type="button" onClick={() => setPlaybackSpeed(playbackSpeed - SPEED_STEP)} disabled={playbackSpeed <= SPEED_MIN}
+              aria-label={t("Decrease playback speed")} className="px-1.5 py-1 rounded border border-border text-xs text-muted hover:text-white disabled:opacity-40">−</button>
+            <span className="w-12 text-center text-xs font-display tabular-nums text-white">{playbackSpeed.toFixed(2)}×</span>
+            <button type="button" onClick={() => setPlaybackSpeed(playbackSpeed + SPEED_STEP)} disabled={playbackSpeed >= SPEED_MAX}
+              aria-label={t("Increase playback speed")} className="px-1.5 py-1 rounded border border-border text-xs text-muted hover:text-white disabled:opacity-40">+</button>
             <button type="button" onClick={() => setPlaybackSpeed(1)} disabled={playbackSpeed === 1}
               className="text-xs text-muted hover:text-white transition-colors disabled:opacity-40">{t("Reset")}</button>
           </div>
