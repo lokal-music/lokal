@@ -74,7 +74,9 @@ function MixCard({ mix, onClick, onOpen, onSave, saving, onContextMenu }) {
   const arts = [...new Map(mix.tracks.map(track => [trackArtURL(track), track]).filter(([art]) => art)).values()].slice(0, 4)
   return (
     <motion.div whileHover={{ scale: 1.03 }} className="relative group" onContextMenu={onContextMenu}>
-      <motion.button whileTap={{ scale: 0.98 }} onClick={onClick} className="w-full flex flex-col gap-3 p-3 bg-elevated border border-border rounded-xl hover:border-accent/30 transition-all text-left">
+      <motion.button whileTap={{ scale: 0.98 }} onClick={onClick}
+        aria-label={`Play ${mixTitle(mix)}`}
+        className="w-full flex flex-col gap-3 p-3 bg-elevated border border-border rounded-xl hover:border-accent/30 transition-all text-left">
         <div className="w-full aspect-square rounded-lg overflow-hidden bg-card relative">
           {arts.length === 0 && <div className="w-full h-full flex items-center justify-center text-subtle"><Radio size={36} /></div>}
           {arts.length === 1 && <QualityImage src={trackArtURL(arts[0])} className="w-full h-full object-cover" />}
@@ -704,9 +706,14 @@ function HomeContent({ user }) {
   const selectedMixId = tab === 'home' && route.section?.startsWith('mix-')
     ? decodeURIComponent(route.section.slice(4)) : null
   const selectedMix = mixes.find(mix => String(mix.id) === selectedMixId)
+  useEffect(() => {
+    if (!selectedMixId) return
+    const main = document.querySelector('main.flex-1.overflow-y-auto')
+    if (main) main.scrollTop = 0
+  }, [selectedMixId])
   const localHome = selectedMix ? (
     <section className="space-y-5" data-local-mix-detail>
-      <button type="button" onClick={() => navigate('/home')}
+      <button type="button" onClick={() => navigate('/home/home')}
         className="text-xs text-muted hover:text-white">← {t('Your Mixes')}</button>
       <div className="flex items-center justify-between gap-3">
         <div><h2 className="text-xl font-semibold text-white">{mixTitle(selectedMix)}</h2>
