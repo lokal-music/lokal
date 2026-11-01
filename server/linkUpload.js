@@ -6,6 +6,7 @@ const { pipeline } = require('stream/promises')
 const { getDB, getStorageDir } = require('../electron/ipc/db')
 const { findPhonePlaceholder } = require('./linkUploadMatch')
 const { phoneFileName, reservePhoneDestination } = require('./phoneFileNaming')
+const { phoneDownloadDirectory } = require('../electron/storageLocations')
 
 // The phone must opt in before using this endpoint. Only an individually
 // paired device can upload, and only newly created files are ever removed.
@@ -17,8 +18,21 @@ async function receivePhoneFile(req,res) {
   if(!metadata || typeof metadata!=='object' || Array.isArray(metadata))return res.status(400).json({error:'Invalid file metadata.'})
   const extension=String(metadata.extension||'').toLowerCase()
   if(!['flac','mp3','m4a','aac','ogg','opus','wav','aiff','aif','alac','ape','wv','dsf','dff','webm'].includes(extension))return res.status(400).json({error:'Unsupported audio format.'})
-  const directory=path.join(getStorageDir(),'phone-downloads')
-  await fs.ensureDir(directory)
+  // Honor the dedicated incoming-phone folder; otherwise preserve the old
+  // Lokal Phone subfolder on the user's normal download drive.
+  let directory
+  // Validate that the selected storage volume is still the original one
+  // before mkdir or opening a .part file: an unmounted mountpoint itself
+  // can remain writable on the internal disk.
+  try {
+    directory=phoneDownloadDirectory()
+    await fs.ensureDir(directory)
+  } catch (error) {
+    return res.status(503).json({
+      error: 'Phone copy destination is unavailable: ' +
+        (error?.message || String(error)),
+    })
+  }
   const id=randomUUID(),partial=path.join(directory,`.${id}.${extension}.part`)
   let destination=null,stored=false,bytes=0
   const hash=createHash('sha256')

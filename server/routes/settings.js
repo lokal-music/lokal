@@ -63,7 +63,7 @@ router.put('/', (req, res) => {
   const stmt = getDB().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
   for (const [k, v] of Object.entries(req.body || {})) {
     // Disk paths must only be changed by the validated native folder picker.
-    if (k === 'cache_root' || k === 'download_root') continue
+    if (k === 'cache_root' || k === 'download_root' || k === 'phone_download_root') continue
     if (SECRET_KEYS.has(k) && String(v) === SECRET_PLACEHOLDER) continue
     stmt.run(k, String(v))
   }

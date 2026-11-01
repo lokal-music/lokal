@@ -11,6 +11,15 @@ function leadArtist(expression) {
   return 'LOWER(TRIM(' + first + '))';
 }
 
+// Album ownership alone is not a recording identity: compilation albums
+// may contain unrelated songs with the same title and approximate duration.
+// Only use the album-artist override when it is itself credited as a
+// performer on both copies. Match whole comma/semicolon-separated names.
+function creditsArtist(credit, owner) {
+  const cleaned = `REPLACE(REPLACE(REPLACE(LOWER(TRIM(COALESCE(${credit}, ''))), ', ', ','), '; ', ','), ';', ',')`
+  return `INSTR(',' || ${cleaned} || ',', ',' || ${leadArtist(owner)} || ',') > 0`
+}
+
 function desktopPreferredLibraryClause() {
   return [
     "NOT (COALESCE(tracks.download_source, '') = 'mobile'",
@@ -21,7 +30,16 @@ function desktopPreferredLibraryClause() {
     "AND desktop.title = tracks.title COLLATE NOCASE",
     "AND COALESCE(desktop.duration, 0) > 0",
     "AND ABS(desktop.duration - tracks.duration) <= 2",
-    'AND ' + leadArtist('desktop.artist') + ' = ' + leadArtist('tracks.artist'),
+    // Album-artist identifies the owner when a track credits multiple guests.
+    // Preserve the full track artist in storage; choose the owner only for
+    // matching equivalent phone/desktop rows.
+    'AND ' + leadArtist("COALESCE(NULLIF(TRIM(desktop.album_artist), ''), desktop.artist)") +
+      ' = ' + leadArtist("COALESCE(NULLIF(TRIM(tracks.album_artist), ''), tracks.artist)"),
+    // Primary credits must also be compatible. Matching album_artist alone
+    // would incorrectly suppress unrelated tracks on Various Artists records.
+    'AND (' + leadArtist('desktop.artist') + ' = ' + leadArtist('tracks.artist') +
+      ' OR (' + creditsArtist('desktop.artist', 'desktop.album_artist') +
+      ' AND ' + creditsArtist('tracks.artist', 'tracks.album_artist') + '))',
     "AND (TRIM(COALESCE(desktop.album, '')) = ''",
     "OR TRIM(COALESCE(tracks.album, '')) = ''",
     "OR LOWER(TRIM(desktop.album)) = LOWER(TRIM(tracks.album)))",

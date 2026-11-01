@@ -1808,7 +1808,7 @@ function registerScannerHandlers(ipcMain) {
   ipcMain.handle('settings:get', () => { const rows = getDB().prepare('SELECT key, value FROM settings').all(); return Object.fromEntries(rows.map(r => [r.key, SECRET_SETTING_KEYS.has(r.key) && r.value ? SECRET_SETTING_PLACEHOLDER : r.value])) })
   ipcMain.handle('settings:save', (_, s) => {
     const stmt = getDB().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
-    for (const [k, v] of Object.entries(s)) { if (k === 'cache_root' || k === 'download_root') continue; if (SECRET_SETTING_KEYS.has(k) && String(v) === SECRET_SETTING_PLACEHOLDER) continue; stmt.run(k, String(v)) }
+    for (const [k, v] of Object.entries(s)) { if (k === 'cache_root' || k === 'download_root' || k === 'phone_download_root') continue; if (SECRET_SETTING_KEYS.has(k) && String(v) === SECRET_SETTING_PLACEHOLDER) continue; stmt.run(k, String(v)) }
     // Write, or remove, the file made from a pasted YouTube cookie.
     require('./ytCookies').syncPastedCookie(Object.fromEntries(getDB().prepare('SELECT key, value FROM settings').all().map(r => [r.key, r.value])))
   })

@@ -5,7 +5,7 @@ const path = require('path')
 const os = require('os')
 const { getDB, getStorageDir } = require('./ipc/db')
 
-const KEYS = Object.freeze({ downloads: 'download_root', cache: 'cache_root' })
+const KEYS = Object.freeze({ downloads: 'download_root', cache: 'cache_root', phone: 'phone_download_root' })
 
 function savedRoot(kind, settings) {
   const key = KEYS[kind]
@@ -19,13 +19,70 @@ function savedRoot(kind, settings) {
   return value && path.isAbsolute(value) ? path.resolve(value) : ''
 }
 
+// A chosen mountpoint can remain writable after its drive is disconnected.
+// Detect volume replacement BEFORE allowing any new media or cache writes.
+function assertSelectedVolume(kind, root = savedRoot(kind)) {
+  if (!root) return
+  const key = KEYS[kind]
+  if (!key) throw new Error('Unknown storage location')
+  let expected
+  try {
+    expected = getDB()?.prepare('SELECT value FROM settings WHERE key = ?')
+      .get(key + '_device')?.value
+  } catch {}
+  // Existing preferences predate volume tracking. Re-choosing the location
+  // records its device identity; we still reject a missing selected path.
+  let actual
+  try { actual = String(fs.statSync(root).dev) }
+  catch {
+    throw new Error('Selected ' + kind + ' drive is unavailable. Reconnect it or choose another location.')
+  }
+  if (expected && expected !== actual) {
+    throw new Error('Selected ' + kind + ' drive has changed. Reconnect the original volume or choose another location.')
+  }
+}
+
 function downloadDirectory(settings = {}, explicitOutputDir = '') {
   if (explicitOutputDir) return explicitOutputDir
-  return savedRoot('downloads', settings) || settings.music_folder || path.join(os.homedir(), 'Music')
+  const chosen = savedRoot('downloads', settings)
+  if (chosen) {
+    assertSelectedVolume('downloads', chosen)
+    return chosen
+  }
+  return settings.music_folder || path.join(os.homedir(), 'Music')
+}
+
+// Paired-phone originals follow the same user-selected download drive,
+ // never the private application database directory.
+function phoneCopyDirectory(settings = {}) {
+  return path.join(downloadDirectory(settings), 'Lokal Phone')
+}
+
+// Incoming paired-phone files live here; independent of normal downloads
+// and app-private storage. Never silently fall back after an explicit choice.
+function phoneDownloadDirectory(settings = {}) {
+  // Respect the main library location when no download drive is selected.
+  // A dedicated phone folder, when selected, takes precedence over both.
+  let library = settings.music_folder
+  if (!library) {
+    try { library = getDB()?.prepare('SELECT value FROM settings WHERE key = ?')
+      .get('music_folder')?.value } catch {}
+  }
+  const selected = savedRoot('phone', settings)
+  if (selected) {
+    assertSelectedVolume('phone', selected)
+    return selected
+  }
+  return phoneCopyDirectory({ ...settings, music_folder: library })
 }
 
 function cacheDirectoryRoot() {
-  return savedRoot('cache') || getStorageDir()
+  const chosen = savedRoot('cache')
+  if (chosen) {
+    assertSelectedVolume('cache', chosen)
+    return chosen
+  }
+  return getStorageDir()
 }
 
 /** Validate *before* persisting. Never silently fall back to C: on failures. */
@@ -53,8 +110,12 @@ function saveRoot(kind, selected) {
   const root = selected ? validateWritableDirectory(selected) : ''
   const database = getDB()
   if (!database) throw new Error('The music library has not loaded yet.')
-  database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, root)
+  const device = root ? String(fs.statSync(root).dev) : ''
+  database.transaction(() => {
+    database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, root)
+    database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key + '_device', device)
+  })()
   return root
 }
 
-module.exports = { KEYS, savedRoot, downloadDirectory, cacheDirectoryRoot, validateWritableDirectory, saveRoot }
+module.exports = { KEYS, savedRoot, downloadDirectory, phoneCopyDirectory, phoneDownloadDirectory, cacheDirectoryRoot, assertSelectedVolume, validateWritableDirectory, saveRoot }

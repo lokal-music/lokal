@@ -12,6 +12,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lokal-storage-test-'))
 after(() => fs.rmSync(root, { recursive: true, force: true }))
 const rows = new Map()
 const db = {
+  transaction: callback => callback,
   prepare() {
     return {
       get: key => ({ value: rows.get(key) }),
@@ -44,6 +45,15 @@ test('download target honors an explicit output, then the selected disk, then th
   assert.equal(storage.cacheDirectoryRoot(), path.join(root, 'data'))
   assert.equal(storage.saveRoot('downloads', ''), '')
   assert.equal(storage.downloadDirectory({ music_folder: music }), music)
+})
+
+test('paired phone originals follow the user-selected download disk', () => {
+  const chosen = path.join(root, 'external', 'mobile-inbound')
+  storage.saveRoot('downloads', chosen)
+  assert.equal(storage.phoneCopyDirectory(), path.join(chosen, 'Lokal Phone'))
+  storage.saveRoot('downloads', '')
+  assert.equal(storage.phoneCopyDirectory({ music_folder: path.join(root, 'music') }),
+    path.join(root, 'music', 'Lokal Phone'))
 })
 
 test('cache location is independent of downloads, database and installation directory', () => {
@@ -81,6 +91,41 @@ test('native folder selection is connected to settings, downloaded files and Lok
   assert.match(read('electron/preload.js'), /storageLocations/)
   assert.match(read('src/pages/Settings.jsx'), /Download Location/)
   assert.match(read('src/pages/Settings.jsx'), /Cache Location/)
+})
+
+test('paired-phone original files have a separate selected destination', () => {
+  const initial = storage.phoneCopyDirectory()
+  assert.equal(storage.phoneDownloadDirectory(), initial)
+  const selected = path.join(root, 'other-disk', 'phone-music')
+  assert.equal(storage.saveRoot('phone', selected), selected)
+  assert.equal(storage.phoneDownloadDirectory(), selected)
+  assert.equal(storage.savedRoot('downloads'), '')
+  assert.equal(storage.savedRoot('cache'), '')
+  assert.equal(storage.saveRoot('phone', ''), '')
+  assert.equal(storage.phoneDownloadDirectory(), initial)
+})
+
+test('a changed or missing selected volume rejects phone uploads instead of writing to its mountpoint', () => {
+  const selected = path.join(root, 'separate-drive', 'incoming')
+  storage.saveRoot('phone', selected)
+  const originalDevice = rows.get('phone_download_root_device')
+  assert.ok(originalDevice)
+  rows.set('phone_download_root_device', 'unexpected-volume')
+  assert.throws(() => storage.phoneDownloadDirectory(), /drive has changed/)
+  rows.set('phone_download_root_device', originalDevice)
+  assert.equal(storage.phoneDownloadDirectory(), selected)
+  fs.rmSync(selected, { recursive: true, force: true })
+  assert.throws(() => storage.phoneDownloadDirectory(), /drive is unavailable/)
+  storage.saveRoot('phone', '')
+})
+
+test('phone-upload folder uses validated native selection and cannot be set through the web API', () => {
+  const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8')
+  assert.match(read('server/linkUpload.js'), /phoneDownloadDirectory\(\)/)
+  assert.match(read('electron/ipc/cache.js'), /phone: storage\.savedRoot\('phone'\)/)
+  assert.match(read('src/pages/Settings.jsx'), /Incoming phone files/)
+  assert.match(read('server/routes/settings.js'), /phone_download_root/)
+  assert.match(read('electron/ipc/scanner.js'), /phone_download_root/)
 })
 
 test('Windows installer still uses its old configuration', () => {

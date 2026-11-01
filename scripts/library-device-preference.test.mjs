@@ -11,12 +11,12 @@ const { desktopPreferredLibraryClause, shouldPreferDesktop } =
 function fixture() {
   const db = new DatabaseSync(':memory:')
   db.exec(`CREATE TABLE tracks (
-    id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT,
+    id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT, album_artist TEXT,
     duration REAL, download_source TEXT, file_path TEXT
   )`)
-  const add = db.prepare('INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?)')
-  function insert(id, title, artist, album, duration, source) {
-    add.run(id, title, artist, album, duration, source,
+  const add = db.prepare('INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+  function insert(id, title, artist, album, duration, source, albumArtist = null) {
+    add.run(id, title, artist, album, albumArtist, duration, source,
       '/library/' + id + '.flac')
   }
   return { db, insert }
@@ -42,6 +42,15 @@ test('desktop version replaces equivalent synced phone upload in All sources', (
   assert.deepEqual(visible(db), ['desktop', 'mobile-only'])
   // Explicit source filters remain available for inspecting synced uploads.
   assert.deepEqual(visible(db, { source: 'mobile' }), ['mobile', 'mobile-only'])
+  db.close()
+})
+
+test('album artist wins for multi-artist credits when matching phone copies', () => {
+  const { db, insert } = fixture()
+  insert('desktop', 'All the Stars', 'Kendrick Lamar, SZA', 'Black Panther', 232, null, 'SZA')
+  insert('mobile', 'All the Stars', 'SZA', 'Black Panther', 232, 'mobile', 'SZA')
+  assert.deepEqual(visible(db), ['desktop'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['mobile'])
   db.close()
 })
 
@@ -83,4 +92,42 @@ test('preference skips explicit record and diagnostic lookups', () => {
   assert.equal(shouldPreferDesktop({ includeGhosts: true }), false)
   assert.equal(shouldPreferDesktop({ source: 'all' }), true)
   assert.match(desktopPreferredLibraryClause(), /NOT \(COALESCE\(tracks\.download_source/)
+})
+
+test('SZA/Kendrick collaboration is owned by the credited main album artist', () => {
+  const { db, insert } = fixture()
+  insert('pc', 'All the Stars', 'Kendrick Lamar, SZA', 'Black Panther',
+    236, null, 'SZA')
+  insert('phone', 'All the Stars', 'SZA', 'Black Panther', 236,
+    'mobile', 'SZA')
+  assert.deepEqual(visible(db), ['pc'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
+  db.close()
+})
+
+test('same title and duration from different album owners remain separate', () => {
+  const { db, insert } = fixture()
+  insert('pc', 'Overture', 'Guest feat. Artist', 'Soundtrack', 181, null, 'Guest')
+  insert('phone', 'Overture', 'Artist', 'Soundtrack', 181, 'mobile', 'Artist')
+  assert.deepEqual(visible(db), ['pc', 'phone'])
+  db.close()
+})
+
+test('unrelated compilation tracks with the same title/duration remain separate', () => {
+  const { db, insert } = fixture()
+  insert('desktop', 'Intro', 'Singer Alpha', 'Various Hits', 72, null, 'Various Artists')
+  insert('phone', 'Intro', 'Singer Beta', 'Various Hits', 72, 'mobile', 'Various Artists')
+  assert.deepEqual(visible(db), ['desktop', 'phone'])
+  db.close()
+})
+
+test('shared credited album owner allows differently ordered collaboration credits', () => {
+  const { db, insert } = fixture()
+  insert('desktop', 'Collaboration', 'First Artist, Second Artist',
+    'Collaboration Album', 235, null, 'Second Artist')
+  insert('phone', 'Collaboration', 'Second Artist, First Artist',
+    'Collaboration Album', 235, 'mobile', 'Second Artist')
+  assert.deepEqual(visible(db), ['desktop'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
+  db.close()
 })
