@@ -410,6 +410,15 @@ export default function Settings() {
       touchedSettingsRef.current.add(key)
       setSettings(previous => ({ ...previous, [key]: result.root || '' }))
       setStorageLocations(previous => ({ ...previous, [kind]: result.root || '' }))
+      // The effective phone destination also depends on Download Location
+      // when there is no dedicated phone root. Refresh the derived default
+      // after choosing or resetting either location.
+      if (kind === 'downloads' || kind === 'phone') {
+        try {
+          const current = await api.storageLocations?.()
+          if (current && !current.error) setStorageLocations(current)
+        } catch { /* destination selection has already been saved */ }
+      }
       // Keep the shared settings snapshot consistent with this separately
       // validated IPC write; other screens consult it without reopening Settings.
       await Promise.resolve(api.getSettings?.()).catch(() => {})
