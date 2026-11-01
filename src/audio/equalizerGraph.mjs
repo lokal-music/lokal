@@ -119,9 +119,9 @@ function withIrStore(mode,perform) {
       const db=request.result
       const tx=db.transaction('files',mode)
       const op=perform(tx.objectStore('files'))
-      op.onsuccess=()=>resolve(op.result)
       op.onerror=()=>reject(op.error)
-      tx.oncomplete=()=>db.close()
+      tx.oncomplete=()=>{resolve(op.result);db.close()}
+      tx.onerror=()=>{reject(tx.error);db.close()}
     }
   })
 }
