@@ -69,7 +69,7 @@ function dateLabel(timestamp, t) {
   return new Date(value * 1000).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-function MixCard({ mix, onClick, onSave, saving, onContextMenu }) {
+function MixCard({ mix, onClick, onOpen, onSave, saving, onContextMenu }) {
   const { t } = useTranslation()
   const arts = [...new Map(mix.tracks.map(track => [trackArtURL(track), track]).filter(([art]) => art)).values()].slice(0, 4)
   return (
@@ -81,8 +81,13 @@ function MixCard({ mix, onClick, onSave, saving, onContextMenu }) {
           {arts.length > 1 && <div className="w-full h-full grid grid-cols-2">{arts.map((track, index) => <QualityImage key={index} src={trackArtURL(track)} className="w-full h-full object-cover" />)}</div>}
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"><div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center shadow-xl"><Play size={16} fill="currentColor" className="text-base translate-x-0.5" /></div></div>
         </div>
-        <div><p className="text-sm font-medium text-white truncate">{mix.name}</p><p className="text-xs text-muted">{plural(mix.tracks.length, 'track')} · {mixTitle(mix)}</p></div>
       </motion.button>
+      <button type="button" onClick={onOpen}
+        aria-label={`Open ${mixTitle(mix)} playlist`}
+        className="w-full px-3 pb-1 text-left rounded-md hover:text-accent focus-visible:ring-2 focus-visible:ring-accent">
+        <p className="text-sm font-medium truncate">{mix.name}</p>
+        <p className="text-xs text-muted">{plural(mix.tracks.length, 'track')} · {mixTitle(mix)}</p>
+      </button>
       <button onClick={onSave} disabled={saving} title={t("Save as playlist")} aria-label={`Save ${mixTitle(mix)} as a playlist`} className={`absolute right-5 top-5 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/85 backdrop-blur transition-all hover:bg-black/80 hover:text-accent focus:opacity-100 ${saving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
         {saving ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent/30 border-t-accent" /> : <ListPlus size={15} />}
       </button>
@@ -696,11 +701,27 @@ function HomeContent({ user }) {
     { separator: true },
     { label: 'Go to artist', icon: User, onSelect: () => navigate(artistPath(track.artist)) },
   ])
-  const localHome = <>
+  const selectedMixId = tab === 'home' && route.section?.startsWith('mix-')
+    ? decodeURIComponent(route.section.slice(4)) : null
+  const selectedMix = mixes.find(mix => String(mix.id) === selectedMixId)
+  const localHome = selectedMix ? (
+    <section className="space-y-5" data-local-mix-detail>
+      <button type="button" onClick={() => navigate('/home')}
+        className="text-xs text-muted hover:text-white">← {t('Your Mixes')}</button>
+      <div className="flex items-center justify-between gap-3">
+        <div><h2 className="text-xl font-semibold text-white">{mixTitle(selectedMix)}</h2>
+          <p className="text-sm text-muted">{plural(selectedMix.tracks.length, 'track')}</p></div>
+        <button type="button" onClick={() => playQueue(selectedMix.tracks, 0)}
+          className="rounded-lg bg-accent px-4 py-2 text-sm text-base">{t('Play')}</button>
+      </div>
+      <TrackList tracks={selectedMix.tracks} reduceMotion
+        context={{ type: 'playlist', name: mixTitle(selectedMix) }} />
+    </section>
+  ) : <>
     {picks.length > 0 && <MadeForYou picks={picks}
       onPlay={index => playQueue(pickTracks, index, madeForYouContext)}
       onContextMenu={openPickMenu} />}
-    {mixes.length > 0 && <section><div className="flex items-center gap-2 mb-4"><Radio size={14} className="text-accent" /><h2 className="text-xs font-display text-muted uppercase tracking-widest">{t("Your Mixes")}</h2></div><div className="grid grid-cols-2 @md:grid-cols-3 gap-3">{mixes.slice(0, 6).map(mix => <MixCard key={mix.id} mix={mix} onClick={() => playQueue(mix.tracks, 0)} onSave={() => saveMix(mix)} saving={saving === `mix:${mix.id}`} onContextMenu={event => openMixMenu(event, mix)} />)}</div></section>}
+    {mixes.length > 0 && <section><div className="flex items-center gap-2 mb-4"><Radio size={14} className="text-accent" /><h2 className="text-xs font-display text-muted uppercase tracking-widest">{t("Your Mixes")}</h2></div><div className="grid grid-cols-2 @md:grid-cols-3 gap-3">{mixes.slice(0, 6).map(mix => <MixCard key={mix.id} mix={mix} onClick={() => playQueue(mix.tracks, 0)} onOpen={() => navigate(`/home/home/mix-${encodeURIComponent(mix.id)}`)} onSave={() => saveMix(mix)} saving={saving === `mix:${mix.id}`} onContextMenu={event => openMixMenu(event, mix)} />)}</div></section>}
     {suggestions.length > 0 && <section><div className="flex items-center gap-2 mb-4"><Sparkles size={14} className="text-accent" /><h2 className="text-xs font-display text-muted uppercase tracking-widest">{t("Suggested for You")}</h2><button onClick={() => saveList('suggestions', `Suggested for You - ${today()}`, suggestions, 'Suggested for you on Home')} disabled={!!saving} className="ml-auto inline-flex items-center gap-1 text-xs text-accent disabled:opacity-50"><ListPlus size={13} />{t("Save as playlist")}</button></div><TrackList tracks={suggestions.slice(0, 8)} reduceMotion /></section>}
     {recentTracks.length > 0 && <section><div className="flex items-center justify-between mb-4"><h2 className="text-xs font-display text-muted uppercase tracking-widest">{t("Recently Added")}</h2><button onClick={() => playQueue(recentTracks, 0)} className="text-xs text-accent hover:text-accent/70">{t("Play All")}</button></div><TrackList tracks={recentTracks} reduceMotion /></section>}
     {loaded && !recentTracks.length && !suggestions.length && !mixes.length && <p className="py-10 text-center text-sm text-muted">{t("No local tracks yet. Pick your music folder in Library.")}</p>}
