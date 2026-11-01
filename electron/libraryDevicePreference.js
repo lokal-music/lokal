@@ -21,7 +21,11 @@ function desktopPreferredLibraryClause() {
     "AND desktop.title = tracks.title COLLATE NOCASE",
     "AND COALESCE(desktop.duration, 0) > 0",
     "AND ABS(desktop.duration - tracks.duration) <= 2",
-    'AND ' + leadArtist('desktop.artist') + ' = ' + leadArtist('tracks.artist'),
+    // Album-artist identifies the owner when a track credits multiple guests.
+    // Preserve the full track artist in storage; choose the owner only for
+    // matching equivalent phone/desktop rows.
+    'AND ' + leadArtist("COALESCE(NULLIF(TRIM(desktop.album_artist), ''), desktop.artist)") +
+      ' = ' + leadArtist("COALESCE(NULLIF(TRIM(tracks.album_artist), ''), tracks.artist)"),
     "AND (TRIM(COALESCE(desktop.album, '')) = ''",
     "OR TRIM(COALESCE(tracks.album, '')) = ''",
     "OR LOWER(TRIM(desktop.album)) = LOWER(TRIM(tracks.album)))",
