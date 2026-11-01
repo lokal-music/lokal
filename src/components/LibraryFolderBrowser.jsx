@@ -310,8 +310,17 @@ export default function LibraryFolderBrowser({
   const sortTracks = useCallback(list => {
     const sorted = [...list]
     const cmpText = key => (a, b) => String(a[key] || '').localeCompare(String(b[key] || ''), undefined, { numeric: true, sensitivity: 'base' })
+    const cmpTrackNumber = (a, b) => {
+      const left = Number(a.track_num)
+      const right = Number(b.track_num)
+      const hasLeft = Number.isFinite(left) && left > 0
+      const hasRight = Number.isFinite(right) && right > 0
+      if (hasLeft !== hasRight) return hasLeft ? -1 : 1
+      return hasLeft ? left - right : 0
+    }
     if (filters.sort === 'title ASC') sorted.sort(cmpText('title'))
     else if (filters.sort === 'artist ASC') sorted.sort(cmpText('artist'))
+    else if (filters.sort === 'track_num ASC') sorted.sort(cmpTrackNumber)
     else if (filters.sort === 'play_count DESC') sorted.sort((a, b) => Number(b.play_count || 0) - Number(a.play_count || 0))
     else if (filters.sort === 'duration DESC') sorted.sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0))
     else sorted.sort((a, b) => Number(b.added_at || b.created_at || 0) - Number(a.added_at || a.created_at || 0))
