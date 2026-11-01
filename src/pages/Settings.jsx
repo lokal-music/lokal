@@ -1,4 +1,6 @@
 import OutputPrecisionSettings from '../components/OutputPrecisionSettings'
+import EqualizerModal from '../components/EqualizerModal'
+import { loadEqState } from '../audio/equalizerConfig.mjs'
 import { usePanelWidths } from '../panelWidths.jsx'
 import { KEYBOARD_SHORTCUTS } from '../useKeyboardShortcuts'
 import SplitWordsSettings from '../components/SplitWordsSettings'
@@ -35,16 +37,6 @@ import { SPEED_MAX, SPEED_MIN, SPEED_STEP, usePlaybackSpeed } from '../playbackS
 import SoulseekSignIn from '../components/SoulseekSignIn'
 import { loadMilkDropPresetNames, normalizeEnabledMilkDropPresets } from '../visualizers/milkDropPresets.mjs'
 
-const EQ_BANDS = ['31Hz', '62Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz']
-const EQ_PRESETS = {
-  flat: { label: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-  bassBoost: { label: 'Bass Boost', gains: [5, 4.5, 3, 1.5, 0.5, 0, -0.5, -1, -1.5, -2] },
-  vocalBoost: { label: 'Vocal Boost', gains: [-1.5, -1, -0.5, 0.5, 1.5, 3, 3.5, 2.5, 1, 0] },
-  bright: { label: 'Bright', gains: [-1, -0.5, 0, 0.5, 1, 1.5, 2.5, 3, 3.5, 3] },
-  electronic: { label: 'Electronic', gains: [4, 3, 1, 0, -1, 1, 2, 3, 4, 4.5] },
-  mellow: { label: 'Mellow', gains: [1.5, 1, 0.5, 0, -0.5, -1, -0.5, 0.5, 1, 1.5] },
-}
-const DEFAULT_EQ_PRESET = 'flat'
 const LASTFM_STATUS_KEY = 'lokal-lastfm-status-feed'
 const SETTINGS_CATEGORIES = [
   { key: 'integrations', label: 'Integrations', icon: Zap },
@@ -167,25 +159,6 @@ function ThreeDotsMenu({ items = [], align = 'right' }) {
       )}
     </div>
   )
-}
-
-function normalizeEqGains(values) {
-  const safeValues = Array.isArray(values) ? values.map(v => Number(v) || 0) : []
-  if (safeValues.length === EQ_BANDS.length) {
-    return safeValues.slice(0, EQ_BANDS.length)
-  }
-  if (safeValues.length === 5) {
-    return [safeValues[0], safeValues[0], safeValues[1], safeValues[1], safeValues[2], safeValues[2], safeValues[3], safeValues[3], safeValues[4], safeValues[4]]
-  }
-  return EQ_BANDS.map((_, i) => safeValues[i] || 0)
-}
-
-function getEqPresetKey(gains) {
-  const normalized = normalizeEqGains(gains)
-  const match = Object.entries(EQ_PRESETS).find(([, preset]) =>
-    preset.gains.length === normalized.length && preset.gains.every((value, index) => value === normalized[index])
-  )
-  return match?.[0] || 'custom'
 }
 
 // The Side Panels toggle saves on every click rather than waiting for the
@@ -337,8 +310,8 @@ export default function Settings() {
       .finally(() => setMilkDropPresetsLoading(false))
   }, [showVisualizerMenu, milkDropPresetLoadStarted])
   const [showGenreModal, setShowGenreModal] = useState(false)
-  const [eqGains, setEqGains] = useState(EQ_PRESETS[DEFAULT_EQ_PRESET].gains)
-  const [eqPreset, setEqPreset] = useState(DEFAULT_EQ_PRESET)
+  const [eqState, setEqState] = useState(() => loadEqState())
+  const [showEqModal, setShowEqModal] = useState(false)
   const [showClearModal, setShowClearModal] = useState(false)
   // Lists a category loads are kept for the next visit, so switching back to
   // it shows them at once (and refreshes them quietly).
@@ -688,12 +661,6 @@ export default function Settings() {
 
     })
 
-    try {
-      const nextEq = normalizeEqGains(JSON.parse(localStorage.getItem('lokal-eq') || '[]'))
-      setEqGains(nextEq)
-      setEqPreset(getEqPresetKey(nextEq))
-    } catch {}
-
     if (api.isElectron) {
 
       api.getToolsStatus().then(setToolsStatus)
@@ -816,26 +783,6 @@ export default function Settings() {
   const filteredMilkDropPresetNames = milkDropPresetNames.filter(name =>
     name.toLowerCase().includes(milkDropPresetSearch.trim().toLowerCase()),
   )
-
-  const applyEqGains = (nextGains, presetKey = getEqPresetKey(nextGains)) => {
-    const normalized = normalizeEqGains(nextGains)
-    setEqGains(normalized)
-    setEqPreset(presetKey)
-    try {
-      localStorage.setItem('lokal-eq', JSON.stringify(normalized))
-      localStorage.setItem('lokal-eq-preset', presetKey)
-    } catch {}
-    window.__lokalInitAudio?.()
-    normalized.forEach((gain, index) => {
-      window.__lokaleq?.setGain(index, gain)
-    })
-  }
-
-  const setEQ = (i, v) => {
-    const next = [...eqGains]
-    next[i] = v
-    applyEqGains(next)
-  }
 
   const rescan = async () => {
     let roots = []
@@ -1720,44 +1667,18 @@ activeCategory === 'data' ? usersTried
       )}
 
       {inCategory('playback') && (
-      <Section title={t("Equalizer")}>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-sm text-white font-medium">{t("10-Band EQ")}</p>
-              <p className="text-xs text-muted mt-1">{t('Preset')}: {eqPreset === 'custom' ? t('Custom') : t(EQ_PRESETS[eqPreset]?.label || EQ_PRESETS[DEFAULT_EQ_PRESET].label)}</p>
-            </div>
-            <button onClick={() => applyEqGains(EQ_PRESETS[DEFAULT_EQ_PRESET].gains, DEFAULT_EQ_PRESET)}
-              className="text-xs text-muted hover:text-white transition-colors">{t("Reset")}</button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(EQ_PRESETS).map(([key, preset]) => (
-              <button
-                key={key}
-                onClick={() => applyEqGains(preset.gains, key)}
-                className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${eqPreset === key ? 'bg-accent/20 border-accent/50 text-accent' : 'bg-card border-border text-muted hover:text-white'}`}
-              >
-                {t(preset.label)}
+        <>
+          <Section title={t("Equalizer")}>
+            <Row label={t("Equalizer")} desc={t("Graphic and parametric EQ, AutoEQ, preamp, presets, tone, dynamics and FX.")}>
+              <button type="button" onClick={() => { setEqState(loadEqState()); setShowEqModal(true) }}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-xs text-white transition-colors hover:border-accent/50 hover:bg-white/10">
+                <span>{t("Open Equalizer")}</span>
+                <span className="text-muted">{eqState.enabled ? (eqState.activePresetName || (eqState.mode === 'parametric' ? t('Parametric') : t('Graphic'))) : t('Off')}</span>
               </button>
-            ))}
-          </div>
-          <div className="flex items-end justify-center gap-3 h-40 overflow-x-auto pb-2">
-            {EQ_BANDS.map((band, i) => (
-              <div key={band} className="flex flex-col items-center gap-2">
-                <span className="text-xs font-display" style={{ color: '#e8ff57', fontSize: 10 }}>
-                  {eqGains[i] > 0 ? '+' : ''}{(eqGains[i] || 0).toFixed(1)}
-                </span>
-                <input type="range" min={-12} max={12} step={0.5} value={eqGains[i] || 0}
-                  onChange={e => setEQ(i, parseFloat(e.target.value))}
-                  className="accent-accent"
-                  style={{ writingMode: 'vertical-lr', direction: 'rtl', width: 24, height: 104, cursor: 'pointer' }} />
-                <span className="text-muted" style={{ fontSize: 9 }}>{band}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted mt-3 text-center opacity-50">{t("The equalizer starts after your first click in the app.")}</p>
-        </div>
-      </Section>
+            </Row>
+          </Section>
+          <EqualizerModal open={showEqModal} onClose={() => setShowEqModal(false)} onChange={setEqState} />
+        </>
       )}
 
       {inCategory('playback') && (
