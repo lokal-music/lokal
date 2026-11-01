@@ -93,3 +93,22 @@ test('preference skips explicit record and diagnostic lookups', () => {
   assert.equal(shouldPreferDesktop({ source: 'all' }), true)
   assert.match(desktopPreferredLibraryClause(), /NOT \(COALESCE\(tracks\.download_source/)
 })
+
+test('SZA/Kendrick collaboration is owned by the credited main album artist', () => {
+  const { db, insert } = fixture()
+  insert('pc', 'All the Stars', 'Kendrick Lamar, SZA', 'Black Panther',
+    236, null, 'SZA')
+  insert('phone', 'All the Stars', 'SZA', 'Black Panther', 236,
+    'mobile', 'SZA')
+  assert.deepEqual(visible(db), ['pc'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
+  db.close()
+})
+
+test('same title and duration from different album owners remain separate', () => {
+  const { db, insert } = fixture()
+  insert('pc', 'Overture', 'Guest feat. Artist', 'Soundtrack', 181, null, 'Guest')
+  insert('phone', 'Overture', 'Artist', 'Soundtrack', 181, 'mobile', 'Artist')
+  assert.deepEqual(visible(db), ['pc', 'phone'])
+  db.close()
+})
