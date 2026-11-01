@@ -93,7 +93,7 @@ test('native folder selection is connected to settings, downloaded files and Lok
 })
 
 test('paired-phone original files have a separate selected destination', () => {
-  const initial = path.join(root, 'data', 'phone-downloads')
+  const initial = storage.phoneCopyDirectory()
   assert.equal(storage.phoneDownloadDirectory(), initial)
   const selected = path.join(root, 'other-disk', 'phone-music')
   assert.equal(storage.saveRoot('phone', selected), selected)
