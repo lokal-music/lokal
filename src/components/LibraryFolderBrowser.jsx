@@ -45,6 +45,7 @@ export default function LibraryFolderBrowser({
 }) {
   const { t } = useTranslation()
   const [data, setData] = useState(null)
+  const [folderColumnSort, setFolderColumnSort] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -310,22 +311,31 @@ export default function LibraryFolderBrowser({
   const sortTracks = useCallback(list => {
     const sorted = [...list]
     const cmpText = key => (a, b) => String(a[key] || '').localeCompare(String(b[key] || ''), undefined, { numeric: true, sensitivity: 'base' })
-    const cmpTrackNumber = (a, b) => {
-      const left = Number(a.track_num)
-      const right = Number(b.track_num)
-      const hasLeft = Number.isFinite(left) && left > 0
-      const hasRight = Number.isFinite(right) && right > 0
-      if (hasLeft !== hasRight) return hasLeft ? -1 : 1
-      return hasLeft ? left - right : 0
-    }
-    if (filters.sort === 'title ASC') sorted.sort(cmpText('title'))
+    if (folderColumnSort?.column === 'number') {
+      // The # header sorts each folder by embedded track number, not row position.
+      // Missing/invalid numbers stay after numbered tracks in either direction.
+      const direction = folderColumnSort.direction === 'desc' ? -1 : 1
+      sorted.sort((a, b) => {
+        const left = Number(a.track_num)
+        const right = Number(b.track_num)
+        const hasLeft = Number.isInteger(left) && left > 0
+        const hasRight = Number.isInteger(right) && right > 0
+        if (hasLeft !== hasRight) return hasLeft ? -1 : 1
+        return hasLeft ? (left - right) * direction : 0
+      })
+    } else if (folderColumnSort?.column === 'added') {
+      const direction = folderColumnSort.direction === 'asc' ? 1 : -1
+      sorted.sort((a, b) => (Number(a.added_at || a.created_at || 0) - Number(b.added_at || b.created_at || 0)) * direction)
+    } else if (folderColumnSort?.column === 'time') {
+      const direction = folderColumnSort.direction === 'asc' ? 1 : -1
+      sorted.sort((a, b) => (Number(a.duration || 0) - Number(b.duration || 0)) * direction)
+    } else if (filters.sort === 'title ASC') sorted.sort(cmpText('title'))
     else if (filters.sort === 'artist ASC') sorted.sort(cmpText('artist'))
-    else if (filters.sort === 'track_num ASC') sorted.sort(cmpTrackNumber)
     else if (filters.sort === 'play_count DESC') sorted.sort((a, b) => Number(b.play_count || 0) - Number(a.play_count || 0))
     else if (filters.sort === 'duration DESC') sorted.sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0))
     else sorted.sort((a, b) => Number(b.added_at || b.created_at || 0) - Number(a.added_at || a.created_at || 0))
     return sorted
-  }, [filters.sort])
+  }, [filters.sort, folderColumnSort])
   const filterActive = (filters.source && filters.source !== 'all') || !!filters.genre || !!filters.quality || !!filters.format
   const visibleFolders = useMemo(() => {
     if (!data?.folders?.length) return []
@@ -527,7 +537,7 @@ export default function LibraryFolderBrowser({
           )}
 
           {visibleTracks.length > 0 && view === 'list' && (
-            <TrackList tracks={visibleTracks} showQuality reduceMotion context={{ type: 'library-folder' }} />
+            <TrackList tracks={visibleTracks} showQuality reduceMotion context={{ type: 'library-folder' }} sort={folderColumnSort} onSortChange={setFolderColumnSort} />
           )}
 
           {visibleTracks.length > 0 && view === 'grid' && (
