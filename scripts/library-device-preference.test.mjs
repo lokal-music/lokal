@@ -11,12 +11,12 @@ const { desktopPreferredLibraryClause, shouldPreferDesktop } =
 function fixture() {
   const db = new DatabaseSync(':memory:')
   db.exec(`CREATE TABLE tracks (
-    id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT,
+    id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT, album_artist TEXT,
     duration REAL, download_source TEXT, file_path TEXT
   )`)
-  const add = db.prepare('INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?)')
-  function insert(id, title, artist, album, duration, source) {
-    add.run(id, title, artist, album, duration, source,
+  const add = db.prepare('INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+  function insert(id, title, artist, album, duration, source, albumArtist = null) {
+    add.run(id, title, artist, album, albumArtist, duration, source,
       '/library/' + id + '.flac')
   }
   return { db, insert }
@@ -42,6 +42,15 @@ test('desktop version replaces equivalent synced phone upload in All sources', (
   assert.deepEqual(visible(db), ['desktop', 'mobile-only'])
   // Explicit source filters remain available for inspecting synced uploads.
   assert.deepEqual(visible(db, { source: 'mobile' }), ['mobile', 'mobile-only'])
+  db.close()
+})
+
+test('album artist wins for multi-artist credits when matching phone copies', () => {
+  const { db, insert } = fixture()
+  insert('desktop', 'All the Stars', 'Kendrick Lamar, SZA', 'Black Panther', 232, null, 'SZA')
+  insert('mobile', 'All the Stars', 'SZA', 'Black Panther', 232, 'mobile', 'SZA')
+  assert.deepEqual(visible(db), ['desktop'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['mobile'])
   db.close()
 })
 
