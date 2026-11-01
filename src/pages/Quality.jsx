@@ -61,6 +61,8 @@ export default function Quality() {
   useEffect(() => {
     if (!linkedTier || appliedLinkRef.current === location.key) return
     appliedLinkRef.current = location.key
+    ++bulkRequestRef.current
+    setBulkLoading(null)
     setFilter(linkedTier)
   }, [linkedTier, location.key, setFilter])
   const [rows, setRowsState] = useState(() => peekCache(`quality:rows:${filter}`) || [])
@@ -76,6 +78,11 @@ export default function Quality() {
   const [message, setMessage] = useState('')
   const [bulkLoading, setBulkLoading] = useState(null) // { tier, scanned, eligible }
   const bulkRequestRef = useRef(0)
+  const selectQualityFilter = tier => {
+    ++bulkRequestRef.current
+    setBulkLoading(null)
+    setFilter(tier)
+  }
   const playQueue = usePlayerStore(s => s.playQueue)
   const pollRef = useRef(null)
   const wasRunning = useRef(false)
@@ -250,7 +257,7 @@ export default function Quality() {
             balanced row on wide desktops. Never leave Suspect orphaned. */}
         <div className="mt-4 grid grid-cols-2 gap-2 @sm:grid-cols-3 @4xl:grid-cols-6">
           {['atmos', 'hires', 'lossless', 'high', 'low', 'suspect'].map(tier => (
-            <StatTile key={tier} tier={tier} count={tiers[tier]} rollFrom={rollFrom(tiers[tier] || 0)} share={shareText(tier)} active={filter === tier} onClick={() => setFilter(tier)} />
+            <StatTile key={tier} tier={tier} count={tiers[tier]} rollFrom={rollFrom(tiers[tier] || 0)} share={shareText(tier)} active={filter === tier} onClick={() => selectQualityFilter(tier)} />
           ))}
         </div>
       </section>
@@ -258,7 +265,7 @@ export default function Quality() {
       <section className="rounded-[24px] border border-border bg-card/60 p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {FILTERS.map(([id, label]) => (
-            <button key={id} onClick={() => setFilter(id)}
+            <button key={id} onClick={() => selectQualityFilter(id)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${filter === id ? 'bg-accent/15 text-accent border border-accent/30' : 'border border-border text-muted hover:text-white'}`}>
               {t(label)}{id === 'upgradable' && tiers.upgradable ? ` · ${tiers.upgradable.toLocaleString()}` : ''}
             </button>
