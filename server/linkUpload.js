@@ -7,6 +7,7 @@ const { getDB, getStorageDir } = require('../electron/ipc/db')
 const { phoneCopyDirectory } = require('../electron/storageLocations')
 const { findPhonePlaceholder } = require('./linkUploadMatch')
 const { phoneFileName, reservePhoneDestination } = require('./phoneFileNaming')
+const { phoneDownloadDirectory } = require('../electron/storageLocations')
 
 // The phone must opt in before using this endpoint. Only an individually
 // paired device can upload, and only newly created files are ever removed.
