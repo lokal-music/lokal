@@ -92,6 +92,27 @@ test('native folder selection is connected to settings, downloaded files and Lok
   assert.match(read('src/pages/Settings.jsx'), /Cache Location/)
 })
 
+test('paired-phone original files have a separate selected destination', () => {
+  const initial = path.join(root, 'data', 'phone-downloads')
+  assert.equal(storage.phoneDownloadDirectory(), initial)
+  const selected = path.join(root, 'other-disk', 'phone-music')
+  assert.equal(storage.saveRoot('phone', selected), selected)
+  assert.equal(storage.phoneDownloadDirectory(), selected)
+  assert.equal(storage.savedRoot('downloads'), '')
+  assert.equal(storage.savedRoot('cache'), '')
+  assert.equal(storage.saveRoot('phone', ''), '')
+  assert.equal(storage.phoneDownloadDirectory(), initial)
+})
+
+test('phone-upload folder uses validated native selection and cannot be set through the web API', () => {
+  const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8')
+  assert.match(read('server/linkUpload.js'), /phoneDownloadDirectory\(\)/)
+  assert.match(read('electron/ipc/cache.js'), /phone: storage\.savedRoot\('phone'\)/)
+  assert.match(read('src/pages/Settings.jsx'), /Incoming phone files/)
+  assert.match(read('server/routes/settings.js'), /phone_download_root/)
+  assert.match(read('electron/ipc/scanner.js'), /phone_download_root/)
+})
+
 test('Windows installer still uses its old configuration', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)))
   assert.equal(pkg.build.nsis?.allowToChangeInstallationDirectory, undefined)
