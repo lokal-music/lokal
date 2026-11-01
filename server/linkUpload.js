@@ -20,11 +20,14 @@ async function receivePhoneFile(req,res) {
   if(!['flac','mp3','m4a','aac','ogg','opus','wav','aiff','aif','alac','ape','wv','dsf','dff','webm'].includes(extension))return res.status(400).json({error:'Unsupported audio format.'})
   // Honor the dedicated incoming-phone folder; otherwise preserve the old
   // Lokal Phone subfolder on the user's normal download drive.
-  const directory=phoneDownloadDirectory()
-  // Network drives can disappear after a valid folder was selected.
-  // Respond explicitly rather than letting a rejected async handler hang.
-  try { await fs.ensureDir(directory) }
-  catch (error) {
+  let directory
+  // Validate that the selected storage volume is still the original one
+  // before mkdir or opening a .part file: an unmounted mountpoint itself
+  // can remain writable on the internal disk.
+  try {
+    directory=phoneDownloadDirectory()
+    await fs.ensureDir(directory)
+  } catch (error) {
     return res.status(503).json({
       error: 'Phone copy destination is unavailable: ' +
         (error?.message || String(error)),
