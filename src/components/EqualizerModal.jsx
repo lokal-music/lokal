@@ -88,6 +88,8 @@ export default function EqualizerModal({open,onClose,onChange}){
   const [advanced,setAdvanced]=useState(false)
   const [presetsOpen,setPresetsOpen]=useState(false)
   const [custom,setCustom]=useState(loadCustom)
+  const [savingPreset,setSavingPreset]=useState(false)
+  const [presetName,setPresetName]=useState('')
   const [query,setQuery]=useState('')
   const [catalog,setCatalog]=useState(null)
   const [autoeqOpen,setAutoeqOpen]=useState(false)
@@ -107,19 +109,23 @@ export default function EqualizerModal({open,onClose,onChange}){
     onChange?.(saved)
   }
   const nested=(section,key,value)=>change(previous=>({...previous,[section]:{...previous[section],[key]:value}}))
-  const saveCustom=()=>{
-    const name=window.prompt('Preset name',state.activePresetName||'My preset')
+  const saveCustom=(name)=>{
     if(!name?.trim())return
-    const preset=presetFromState(state,name.trim())
+    const preset=presetFromState(stateRef.current,name.trim())
     const next=[...custom.filter(p=>p.name!==preset.name),preset]
     setCustom(next);localStorage.setItem(CUSTOM_PRESETS,JSON.stringify(next))
-    setMessage('Preset saved');change({...state,activePresetName:preset.name})
+    setSavingPreset(false)
+    setMessage('Preset saved');change({activePresetName:preset.name})
   }
   const importFile=async(file)=>{
     if(!file)return
     try{
       const preset=parseEqPreset(await file.text(),file.name)
-      change(applyPreset(state,preset));setMessage('Imported '+preset.name)
+      const saved=presetFromState(preset,preset.name)
+      const next=[...custom.filter(p=>p.name!==saved.name),saved]
+      setCustom(next)
+      localStorage.setItem(CUSTOM_PRESETS,JSON.stringify(next))
+      change(applyPreset(stateRef.current,saved));setMessage('Imported and saved '+saved.name)
     }catch(err){setMessage(err.message||'Could not import preset')}
   }
   const exportFile=format=>{
@@ -186,12 +192,17 @@ export default function EqualizerModal({open,onClose,onChange}){
         <SectionTitle side={<button className={css.button} onClick={()=>setPresetsOpen(p=>!p)}><FolderOpen size={14} className="inline mr-1"/> Browse presets {presetsOpen?<ChevronUp size={13} className="inline"/>:<ChevronDown size={13} className="inline"/>}</button>}>Presets and AutoEQ</SectionTitle>
         <div className="flex flex-wrap gap-2">
           <button className={css.button} onClick={loadAutoeq}><Headphones size={14} className="inline mr-1"/> AutoEQ headphones</button>
-          <button className={css.button} onClick={saveCustom}><Save size={14} className="inline mr-1"/> Save preset</button>
+          <button className={css.button} onClick={()=>{setPresetName(state.activePresetName||'My preset');setSavingPreset(true)}}><Save size={14} className="inline mr-1"/> Save preset</button>
           <button className={css.button} onClick={()=>fileRef.current?.click()}><Upload size={14} className="inline mr-1"/> Import JSON / TXT</button>
           <button className={css.button} onClick={()=>exportFile('json')}><Download size={14} className="inline mr-1"/> Export JSON</button>
           <button className={css.button} onClick={()=>exportFile('txt')}>Export TXT</button>
           <input ref={fileRef} hidden type="file" accept=".json,.txt" onChange={e=>{importFile(e.target.files?.[0]);e.target.value=''}}/>
         </div>
+        {savingPreset&&<form className="mt-3 flex items-center gap-2" onSubmit={e=>{e.preventDefault();saveCustom(presetName)}}>
+          <input className={css.input} aria-label="Preset name" autoFocus maxLength={100} value={presetName} onChange={e=>setPresetName(e.target.value)} placeholder="Preset name"/>
+          <button className={css.button} type="submit" disabled={!presetName.trim()}>Save</button>
+          <button className={css.button} type="button" onClick={()=>setSavingPreset(false)}>Cancel</button>
+        </form>}
         {presetsOpen&&<div className="mt-4 space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{EQ_PRESETS.map(p=><button key={p.id} className={css.button} onClick={()=>change(applyPreset(state,{...defaults(),...p,mode:'graphic'}))}>{p.name}</button>)}</div>
           {custom.length>0&&<div><p className="mb-2 text-xs text-muted">Saved presets</p>
