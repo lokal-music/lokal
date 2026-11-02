@@ -41,7 +41,7 @@ function parseVisuals(html) {
     if (Array.isArray(node)) {
       for (const value of node) { const found = findHeader(value, depth + 1); if (found) return found }
     } else if (typeof node === 'object') {
-      if (node.artistLogo && (node.artwork || node.colorBackdropArtwork)) return node
+      if ((node.artistLogo || node.videoArtwork) && (node.artwork || node.colorBackdropArtwork)) return node
       for (const value of Object.values(node)) { const found = findHeader(value, depth + 1); if (found) return found }
     }
     return null
@@ -266,7 +266,7 @@ async function artistMotionFor(artistId, artistName, titles, settings, { ffmpeg,
   return file ? { file, source: 'apple' } : null
 }
 
-module.exports = { parseVisuals, safeURL, acceptedCache, artistVisualsFor, artistMotionFor }
+module.exports = { parseVisuals, safeURL, acceptedCache, artistVisualsFor, artistMotionFor, boundedFetch }
 )
     const page = canonical && artistIdPattern.test(new URL(canonical).pathname)
       ? canonical : safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
