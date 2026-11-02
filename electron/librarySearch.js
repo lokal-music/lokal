@@ -4,6 +4,7 @@
 // words and an artist word). Results where the whole query appears together
 // come first.
 
+const { desktopPreferredLibraryClause } = require('./libraryDevicePreference')
 const MAX_WORDS = 8
 
 /** "Fame is  for Fools" -> ['fame', 'is', 'for', 'fools'] */
