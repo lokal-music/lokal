@@ -80,7 +80,20 @@ class LinkStore {
     const title = parts.pop(), artist = parts.join('|')
     const alias=this.db.prepare('SELECT t.* FROM link_track_aliases a JOIN tracks t ON t.id=a.track_id WHERE a.track_key=?').get(key)
     if (!title || !artist || !Number.isFinite(duration)) return null
-    return this.db.prepare("SELECT * FROM tracks WHERE link_normalize(title)=? AND link_normalize(artist)=? AND abs(COALESCE(duration,0)-?)<=2 ORDER BY CASE WHEN file_path LIKE 'ghost://%' THEN 1 ELSE 0 END, abs(COALESCE(duration,0)-?) LIMIT 1").get(title, artist, duration, duration) || alias || null
+    const exact = this.db.prepare("SELECT * FROM tracks WHERE link_normalize(title)=? AND link_normalize(artist)=? AND abs(COALESCE(duration,0)-?)<=2 ORDER BY CASE WHEN file_path LIKE 'ghost://%' THEN 1 ELSE 0 END, abs(COALESCE(duration,0)-?) LIMIT 1").get(title, artist, duration, duration)
+    if (exact && !String(exact.file_path).startsWith('ghost://')) return exact
+    // Album-owner tags identify many collaborations differently between PC
+    // and phone. Restrict to the same title, album and duration so remixes and
+    // unrelated tracks aren't merged just because the release artist matches.
+    const metadata = fields.track && typeof fields.track === 'object' ? fields.track : fields
+    const owner = text(metadata.album_artist || metadata.albumArtist, 500)
+    const album = text(metadata.album, 500)
+    if (owner && album && title) {
+      const byOwner = this.db.prepare("SELECT * FROM tracks WHERE link_normalize(title)=? AND link_normalize(album)=? AND link_normalize(COALESCE(NULLIF(album_artist,''),artist))=? AND abs(COALESCE(duration,0)-?)<=2 AND file_path NOT LIKE 'ghost://%' ORDER BY abs(COALESCE(duration,0)-?) LIMIT 1")
+        .get(title, album.toLowerCase(), owner.toLowerCase(), duration, duration)
+      if (byOwner) return byOwner
+    }
+    return exact || alias || null
   }
   ensureTrack(fields, key) {
     const existing=this.matchTrack({...fields,track_key:key});
@@ -126,12 +139,24 @@ class LinkStore {
         const result = this.db.prepare('INSERT OR IGNORE INTO history_events (event_id,user_id,device_id,track_key,file_hash,played_at,ms_played,source,track_json) VALUES (?,?,?,?,?,?,?,?,?)').run(item.event_id,userId,item.device_id,text(item.track_key,1500),text(item.file_hash),item.played_at,item.ms_played,text(item.source,50)||'phone',JSON.stringify(item.track || {}))
         if (!result.changes) continue
         accepted++
-        let track = this.matchTrack(item)
+        // Track metadata is nested in the history envelope, while its stable
+        // identity and file hash are top-level. Match both before creating a
+        // metadata-only placeholder that cannot be played on this computer.
+        let track = this.matchTrack({...item, track: item.track})
+        const image = text(item.track?.artwork_url, 2000)
+        const artworkUrl = /^https:\/\//.test(image) && !/[?&](?:token|signature|expires|auth)=/i.test(image) ? image : null
         if (!track) {
           const parts=item.track_key.split('|'); const duration=Number(parts.pop())||0; const title=parts.pop()||'Unknown track'; const artist=parts.join('|')||'Unknown artist'
           const id='link_'+hash(item.track_key)
-          this.db.prepare('INSERT OR IGNORE INTO tracks (id,file_path,file_hash,title,artist,album,duration) VALUES (?,?,?,?,?,?,?)').run(id,'ghost://link/'+id,item.file_hash||id,text(item.track?.title)||title,text(item.track?.artist)||artist,text(item.track?.album),duration)
+          this.db.prepare('INSERT OR IGNORE INTO tracks (id,file_path,file_hash,title,artist,album,album_artist,duration,download_source,artwork_url) VALUES (?,?,?,?,?,?,?,?,?,?)')
+            .run(id,'ghost://link/'+id,item.file_hash||id,text(item.track?.title)||title,text(item.track?.artist)||artist,text(item.track?.album),text(item.track?.album_artist),duration,'mobile',artworkUrl)
           track=this.db.prepare('SELECT * FROM tracks WHERE id=?').get(id)
+        }
+        if (track && String(track.file_path).startsWith('ghost://link/')) {
+          // Repair history placeholders created by older desktop releases,
+          // without changing the provenance of any real local recording.
+          this.db.prepare("UPDATE tracks SET download_source='mobile', artwork_url=COALESCE(artwork_url,?) WHERE id=?")
+            .run(artworkUrl,track.id)
         }
         // Import directly: receiving a play never scrobbles it a second time.
         if (track && item.ms_played >= 30000) {
