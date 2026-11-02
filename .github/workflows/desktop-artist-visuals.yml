@@ -8,11 +8,13 @@ on:
       - 'electron/ipc/artworkFx.js'
       - 'electron/preload.js'
       - 'src/artistVisuals.js'
+      - 'src/artistMediaFileURL.mjs'
       - 'src/components/ArtistEditorialMedia.jsx'
       - 'src/pages/Artist.jsx'
       - 'src/components/OnlineArtist.jsx'
       - 'src/api.js'
       - 'scripts/artist-visuals.test.mjs'
+      - 'scripts/artist-media-file-url.test.mjs'
       - 'package.json'
       - '.github/workflows/desktop-artist-visuals.yml'
   push:
@@ -21,8 +23,10 @@ on:
       - 'electron/artwork/motion.js'
       - 'electron/ipc/artworkFx.js'
       - 'src/artistVisuals.js'
+      - 'src/artistMediaFileURL.mjs'
       - 'src/components/ArtistEditorialMedia.jsx'
       - 'scripts/artist-visuals.test.mjs'
+      - 'scripts/artist-media-file-url.test.mjs'
       - '.github/workflows/desktop-artist-visuals.yml'
   workflow_dispatch:
 

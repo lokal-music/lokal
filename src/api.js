@@ -1,3 +1,4 @@
+import { artistMediaFileURL } from './artistMediaFileURL.mjs'
 import { loadBrowserPerformanceSettings, saveBrowserPerformanceSettings, onBrowserPerformanceSettings } from './browserPerformanceSettings.mjs'
 import { updateYoutubeAccountStatus, clearYoutubeAccountStatus, youtubeAccountStatusRevision } from './youtubeAccountStatus.js'
 import { cancelDownloadBatches } from './downloadCancellation.js'
@@ -285,12 +286,12 @@ export const api = {
   artistRefreshMetadata: (id, opts = {}) => isE() ? el().artistRefreshMetadata(id, opts) : apiFetch(`/artists/${id}/refresh-metadata`, { method:'POST', body: opts }),
   artistVisuals: (id, name, titles, force = false) => isE() && el()?.artistVisuals
     ? el().artistVisuals(id, name, titles, force).then(v => v?.logoFile
-      ? { ...v, logoSrc: 'file://' + v.logoFile.replace(/\\\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/%3A/g, ':') }
+      ? { ...v, logoSrc: artistMediaFileURL(v.logoFile) }
       : v)
     : Promise.resolve(null),
   artistMotion: (id, name, titles) => isE() && el()?.artistMotion
     ? el().artistMotion(id, name, titles).then(v => v?.file
-      ? { src: 'file://' + v.file.replace(/\\\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/%3A/g, ':') }
+      ? { src: artistMediaFileURL(v.file) }
       : null)
     : Promise.resolve(null),
   // Refresh every artist's bio and picture from a provider (a background job; poll its status).
