@@ -98,7 +98,7 @@ class LinkStore {
         const names = splitArtists(value, keepComma)
           .map(name => name.toLowerCase().replace(/\s+/g, ' ').trim())
           .filter(Boolean)
-        return names.length ? [...new Set(names)].sort().join('\\u0000') : ''
+        return names.length ? JSON.stringify([...new Set(names)].sort()) : ''
       }
       const sourceCredits = credits(artist) // The immutable history key.
       const metadataCredits = credits(metadata.artist)
