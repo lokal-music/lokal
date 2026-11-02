@@ -22,6 +22,8 @@ import { groupReleases, releaseTypeCounts, useReleaseTypes } from '../releaseTyp
 import FollowArtistButton from '../components/FollowArtistButton'
 import { playNextMany } from '../trackActions'
 import { selectedGlobalArtist } from '../globalArtistNavigation.mjs'
+import { useArtistVisuals } from '../artistVisuals'
+import { ArtistTitle, ArtistMotionPortrait } from '../components/ArtistEditorialMedia'
 
 const RELEASE_LAYOUTS_KEY = 'lokal-artist-release-layouts'
 const releaseIdentityPart = value => String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase()
@@ -206,6 +208,8 @@ export default function Artist() {
   useEffect(() => { setConnectedState(isConnected(`artist:${id}`)) }, [id])
   const toggleConnected = () => setConnectedState(on => { setConnected(`artist:${id}`, !on); return !on })
   const onlineHints = useMemo(() => [...(artist?.albums || []).map(album => album.title), ...(artist?.tracks || []).map(track => track.title)].filter(Boolean), [artist])
+  const [visualRefresh, setVisualRefresh] = useState(0)
+  const artistVisuals = useArtistVisuals(artist?.id, artist?.name, onlineHints, visualRefresh)
   const onlineData = useOnlineArtist(artist?.name || '', connected && !!artist?.id, { hints: onlineHints })
 
   // Releases in sections (Albums, EPs, Singles...), the types shown chosen per
@@ -341,6 +345,7 @@ export default function Artist() {
           <div className="relative group flex-shrink-0">
           <button onClick={imgSrc ? () => setZoom(true) : pickArtistImage} title={imgSrc ? t('View the picture') : api.isElectron ? t('Choose a picture') : undefined} className={`flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${imgSrc ? 'cursor-zoom-in' : ''}`}>
               {imgSrc ? <img src={imgSrc} alt={artist.name} className="h-full w-full object-cover" /> : <Music size={36} className="text-muted" />}
+              <ArtistMotionPortrait src={artistVisuals.motionSrc} />
             </button>
             {api.isElectron && imgSrc && (
               <button onClick={pickArtistImage} title={t("Change the picture")} aria-label={t("Change the picture")} className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-elevated text-muted opacity-0 shadow-lg transition-opacity hover:text-white group-hover:opacity-100 focus:opacity-100">
@@ -351,7 +356,7 @@ export default function Artist() {
           </div>
           <div>
             <p className="mb-1 text-xs font-display uppercase tracking-widest text-muted">{t("Artist")}</p>
-            <h1 className="text-3xl font-display text-white">{artist.name}</h1>
+            <ArtistTitle name={artist.name} logoSrc={artistVisuals.logoSrc} logoAspect={artistVisuals.logoAspect} />
             <p className="mt-1 text-xs text-muted">{t((artist.tracks?.length || 0) === 1 ? '{count} track' : '{count} tracks', { count: artist.tracks?.length || 0 })}</p>
           </div>
         </div>
