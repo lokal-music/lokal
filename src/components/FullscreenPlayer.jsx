@@ -319,6 +319,7 @@ export default function FullscreenPlayer() {
   // never even got a chance to render its own "no lyrics found" + search
   // state, exactly like it already does in windowed mode).
   const [fullscreenPanel, setFullscreenPanel] = useState('none')
+  const isPanelVisible = Boolean(currentTrack && fullscreenPanel !== 'none')
   const prevTrackId = useRef(null)
   // Full-screen lyrics is this same overlay in another layout (see
   // LyricsFullscreen): it's open when either view is, and the player's own
@@ -795,7 +796,6 @@ export default function FullscreenPlayer() {
   }
 
   const isAutoSynced = settings.unsynced_auto_sync === '1'
-  const isPanelVisible = currentTrack && fullscreenPanel !== 'none'
   const coverSize = isPanelVisible ? COVER_SIZE_WITH_PANEL : COVER_SIZE
   const fullscreenQualityTier = currentTrack
     ? (isSuspect(currentTrack) ? 'suspect' : tierOf(currentTrack))
