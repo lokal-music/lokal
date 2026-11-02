@@ -96,7 +96,7 @@ class LinkStore {
       const keepComma = keepCommaSetFromDb(this.db)
       const credits = value => {
         const names = splitArtists(value, keepComma)
-          .map(name => name.toLowerCase().replace(/\\s+/g, ' ').trim())
+          .map(name => name.toLowerCase().replace(/\s+/g, ' ').trim())
           .filter(Boolean)
         return names.length ? [...new Set(names)].sort().join('\\u0000') : ''
       }
