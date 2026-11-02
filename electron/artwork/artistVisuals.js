@@ -134,9 +134,9 @@ async function lookupApple(artistName, knownTitles, { fetchImpl, directory }) {
     const songs = await appleJson('https://itunes.apple.com/lookup?' + new URLSearchParams({
       id: String(candidate.artistId), entity: 'song', sort: 'popular', limit: '25', country: 'us'
     }), opts)
-    const proof = (songs?.results || []).filter(s => s.wrapperType === 'track' &&
-      (knownTitles.has(norm(s.trackName)) || knownTitles.has(norm(s.collectionName))))
-      .map(s => norm(s.trackName))
+    const proof = [...new Set((songs?.results || []).filter(s => s.wrapperType === 'track')
+      .flatMap(s => [norm(s.trackName), norm(s.collectionName)])
+      .filter(title => knownTitles.has(title)))]
     if (!proof.length) continue
     const page = safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
     const html = await boundedFetch(page, { fetchImpl, maxBytes: 6 * 1024 * 1024 })
@@ -147,7 +147,7 @@ async function lookupApple(artistName, knownTitles, { fetchImpl, directory }) {
       ? await saveLogo(visuals.logoURL, candidate.artistId, directory, opts).catch(() => null)
       : null
     return {
-      artistId: '', name: artistName, proof: [...knownTitles].slice(0, 60),
+      artistId: '', name: artistName, proof, 
       logoFile, logoAspect: visuals.logoAspect, motionURL: visuals.motionURL,
       fetchedAt: Date.now()
     }
@@ -163,7 +163,7 @@ async function artistVisualsFor(artistId, artistName, titles, options = {}) {
   const key = String(artistId)
   const stored = memory.get(key) || readCache(key, directory)
   const valid = acceptedCache(stored, name, known)
-  if (valid && Date.now() - stored.fetchedAt < (stored.logoFile || stored.motionURL ? HIT_TTL : MISS_TTL)) {
+  if (!options.force && valid && Date.now() - stored.fetchedAt < (stored.logoFile || stored.motionURL ? HIT_TTL : MISS_TTL)) {
     return publicResult(stored)
   }
   if (!pending.has(key)) {
