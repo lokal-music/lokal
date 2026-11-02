@@ -38,9 +38,12 @@ function stripVoicePrefix(line) {
   if (Array.isArray(words) && words.length) {
     // Mornye's enhanced-LRC tags may split "v1" and ":" across two timed
     // units. Remove the prefix across units without changing surviving times.
-    const timedTag = joinUnits(words).match(/^v\d{1,4}\s*[:：]\s*/i)
+    const timedText = joinUnits(words)
+    const timedTag = timedText.match(/^v\d{1,4}\s*[:：]\s*/i)
     if (!timedTag) {
-      words = [] // Do not render a stale prefix from the word timeline.
+      // Some formats store the role only in the line, not in timed words.
+      // Those already-clean word timings must be kept, not downgraded.
+      if (timedText !== text.replace(/\s+/g, ' ').trim()) words = []
     } else {
       let remaining = timedTag[0].length
       const cleaned = []
