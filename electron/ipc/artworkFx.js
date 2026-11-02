@@ -127,8 +127,8 @@ function registerArtworkFxHandlers(ipcMain) {
   ipcMain.handle('artwork:motion', (_, trackId) => motionForTrack(trackId, findFfmpeg()).catch(() => null))
   ipcMain.handle('artwork:artistVisuals', (_, artistId, name, titles, force = false) =>
     artistVisualsFor(artistId, name, titles, { force: force === true }).catch(() => null))
-  ipcMain.handle('artwork:artistMotion', (_, artistId) =>
-    artistMotionFor(artistId, settingsMap(), {
+  ipcMain.handle('artwork:artistMotion', (_, artistId, name, titles) =>
+    artistMotionFor(artistId, name, titles, settingsMap(), {
       ffmpeg: findFfmpeg(), cacheDir: motionCacheDir(),
     }).catch(() => null))
   ipcMain.handle('artwork:spotifyCheck', () => spotifyCheck())
