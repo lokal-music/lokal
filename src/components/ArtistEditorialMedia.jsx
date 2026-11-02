@@ -5,15 +5,16 @@ import { usePerformanceMode } from '../performanceMode'
 import { isWindowHidden, onWindowVisibility } from '../windowVisibility'
 
 export function ArtistTitle({ name, logoSrc, logoAspect = 1 }) {
+  const [failed, setFailed] = useState(null)
+  const useLogo = !!logoSrc && failed !== logoSrc
   return (
     <h1 className="min-w-0 text-3xl font-display text-white" aria-label={name}>
-      {logoSrc
-        ? <img src={logoSrc} alt={name} draggable={false}
+      {useLogo
+        ? <img src={logoSrc} alt="" draggable={false}
             className="block max-w-full object-contain object-left"
             style={{ height: 52, width: Math.min(420, Math.max(72, 52 * logoAspect)) }}
-            onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement.dataset.logoFailed = 'true' }} />
+            onError={() => setFailed(logoSrc)} />
         : name}
-      {logoSrc && <span className="sr-only">{name}</span>}
     </h1>
   )
 }
