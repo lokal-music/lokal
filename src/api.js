@@ -283,8 +283,8 @@ export const api = {
   artistSetImage: (id, d) => isE() ? el().artistSetImage(id, d) : apiFetch(`/artists/${id}/image`, { method:'PUT', body:{imageData:d} }),
   artistSetImageUrl: (id, url) => isE() ? el().artistSetImageUrl(id, url) : apiFetch(`/artists/${id}/image-url`, { method:'PUT', body:{url} }),
   artistRefreshMetadata: (id, opts = {}) => isE() ? el().artistRefreshMetadata(id, opts) : apiFetch(`/artists/${id}/refresh-metadata`, { method:'POST', body: opts }),
-  artistVisuals: (id, name, titles) => isE() && el()?.artistVisuals
-    ? el().artistVisuals(id, name, titles).then(v => v?.logoFile
+  artistVisuals: (id, name, titles, force = false) => isE() && el()?.artistVisuals
+    ? el().artistVisuals(id, name, titles, force).then(v => v?.logoFile
       ? { ...v, logoSrc: 'file://' + v.logoFile.replace(/\\\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/%3A/g, ':') }
       : v)
     : Promise.resolve(null),
