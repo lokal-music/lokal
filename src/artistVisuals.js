@@ -33,7 +33,7 @@ export function useArtistVisuals(artistId, artistName, knownTitles, refresh = 0)
   const key = String(artistId || '')
   const cached = fromCache(key, artistName)
   const [loaded, setLoaded] = useState(null)
-  const [motionSrc, setMotionSrc] = useState(null)
+  const [motionState, setMotionState] = useState(null)
   const titles = useMemo(() => [...new Set((knownTitles || []).filter(Boolean))].slice(0, 60),
     [knownTitles])
   const visuals = loaded?.key === key && loaded.name === artistName
@@ -41,7 +41,7 @@ export function useArtistVisuals(artistId, artistName, knownTitles, refresh = 0)
 
   useEffect(() => {
     let active = true
-    setMotionSrc(null)
+    setMotionState(null)
     if (!api.isElectron || !key || !artistName || titles.length === 0) return () => { active = false }
     ;(async () => {
       try {
@@ -56,11 +56,12 @@ export function useArtistVisuals(artistId, artistName, knownTitles, refresh = 0)
         // Motion can involve an HLS remux. Keep the static portrait and
         // stylized logo responsive while the clip is prepared.
         const motion = await api.artistMotion(key, artistName, titles)
-        if (active && motion?.src) setMotionSrc(motion.src)
+        if (active && motion?.src) setMotionState({ key, name: artistName, src: motion.src })
       } catch { /* Static portrait and plain text remain available. */ }
     })()
     return () => { active = false }
   }, [key, artistName, titles, refresh])
 
-  return { logoSrc: visuals?.logoSrc || null, logoAspect: visuals?.logoAspect || 1, motionSrc }
+  return { logoSrc: visuals?.logoSrc || null, logoAspect: visuals?.logoAspect || 1,
+    motionSrc: motionState?.key === key && motionState?.name === artistName ? motionState.src : null }
 }
