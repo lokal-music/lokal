@@ -55,7 +55,7 @@ export function useArtistVisuals(artistId, artistName, knownTitles, refresh = 0)
         }
         // Motion can involve an HLS remux. Keep the static portrait and
         // stylized logo responsive while the clip is prepared.
-        const motion = await api.artistMotion(key)
+        const motion = await api.artistMotion(key, artistName, titles)
         if (active && motion?.src) setMotionSrc(motion.src)
       } catch { /* Static portrait and plain text remain available. */ }
     })()
