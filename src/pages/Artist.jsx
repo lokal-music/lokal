@@ -343,7 +343,7 @@ export default function Artist() {
           {/* Click: the picture, big (no picture: choose one). The camera
               in the corner changes it. */}
           <div className="relative group flex-shrink-0">
-          <button onClick={imgSrc ? () => setZoom(true) : pickArtistImage} title={imgSrc ? t('View the picture') : api.isElectron ? t('Choose a picture') : undefined} className={`flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${imgSrc ? 'cursor-zoom-in' : ''}`}>
+          <button onClick={imgSrc ? () => setZoom(true) : pickArtistImage} title={imgSrc ? t('View the picture') : api.isElectron ? t('Choose a picture') : undefined} className={`relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${imgSrc ? 'cursor-zoom-in' : ''}`}>
               {imgSrc ? <img src={imgSrc} alt={artist.name} className="h-full w-full object-cover" /> : <Music size={36} className="text-muted" />}
               <ArtistMotionPortrait src={artistVisuals.motionSrc} />
             </button>
@@ -504,7 +504,7 @@ export default function Artist() {
         allArtists={allArtists}
         open={showManage}
         onClose={() => setShowManage(false)}
-        onChanged={load}
+        onChanged={() => { load(); setVisualRefresh(n => n + 1) }}
       />
     </div>
   )
