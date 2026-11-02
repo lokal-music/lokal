@@ -67,6 +67,86 @@ test('mobile artist-credit variants match the existing album owner and never cre
   } finally { db.close() }
 })
 
+test('same album owner and similar duration never attribute a different performer\'s play', () => {
+  const { db, store } = setup()
+  try {
+    const insert = db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('intro_one', '/music/intro-sza.flac', 'hash_sza', 'Intro',
+      'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    insert.run('intro_two', '/music/intro-summer.flac', 'hash_summer', 'Intro',
+      'SZA feat. Summer Walker', 'Soundtrack', 'SZA', 181)
+    const incoming = event('SZA feat. Future', { title: 'Intro' })
+    incoming.track_key = trackKey({ artist: incoming.track.artist, title: 'Intro', duration: 180 })
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    const attributed = db.prepare('SELECT track_id FROM play_history').get().track_id
+    assert.equal(attributed, 'link_' + hash(incoming.track_key))
+    assert.notEqual(attributed, 'intro_one')
+    assert.notEqual(attributed, 'intro_two')
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 3)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM history_events').get().n, 1)
+  } finally { db.close() }
+})
+
+test('reordered complete performer credits select only the compatible recording', () => {
+  const { db, store } = setup()
+  try {
+    const insert = db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('correct', '/music/correct.flac', 'correct_hash', 'Collaboration',
+      'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    insert.run('different', '/music/different.flac', 'different_hash', 'Collaboration',
+      'SZA feat. Summer Walker', 'Soundtrack', 'SZA', 180)
+    const play = event('Kendrick Lamar, SZA')
+    assert.equal(store.pushHistory([play], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id, 'correct')
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 2)
+  } finally { db.close() }
+})
+
+test('shared lead performer is insufficient when another collaborator differs', () => {
+  const { db, store } = setup()
+  try {
+    db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+      .run('wrong', '/music/track.flac', 'hash_local', 'Collaboration',
+        'SZA feat. Summer Walker', 'Soundtrack', 'SZA', 180)
+    const incoming = event('SZA feat. Kendrick Lamar')
+    assert.equal(store.matchTrack(incoming), null)
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id,
+      'link_' + hash(incoming.track_key))
+  } finally { db.close() }
+})
+
+test('ambiguous duplicate takes never choose the first compatible local recording', () => {
+  const { db, store } = setup()
+  try {
+    const insert = db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('take_a', '/music/take-a.flac', 'hash_a', 'Collaboration',
+      'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 179)
+    insert.run('take_b', '/music/take-b.flac', 'hash_b', 'Collaboration',
+      'SZA featuring Kendrick Lamar', 'Soundtrack', 'SZA', 181)
+    const incoming = event('Kendrick Lamar, SZA')
+    assert.equal(store.matchTrack(incoming), null)
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id,
+      'link_' + hash(incoming.track_key))
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 3)
+  } finally { db.close() }
+})
+
+test('contradictory event metadata cannot override performer credit in the track key', () => {
+  const { db, store } = setup()
+  try {
+    db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+      .run('local', '/music/local.flac', 'hash_local', 'Collaboration',
+        'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    const incoming = event('Kendrick Lamar, SZA', { artist: 'SZA feat. Summer Walker' })
+    assert.equal(store.matchTrack(incoming), null)
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id,
+      'link_' + hash(incoming.track_key))
+  } finally { db.close() }
+})
+
 test('unmatched phone play retains source and public cover without pretending audio exists', () => {
   const { db, store } = setup()
   try {
