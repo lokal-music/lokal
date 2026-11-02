@@ -40,7 +40,7 @@
     "test:mpris": "node --test scripts/mpris-config.test.mjs",
     "test:added-date": "node --test scripts/added-date.test.mjs",
     "test:download-folder": "node --test scripts/download-folder.test.mjs",
-    "test:lyrics-voice-prefix": "node --test scripts/lrc-voice-prefix.test.mjs",
+    "test:lyrics-voice-prefix": "node --test scripts/lrc-voice-prefix.test.mjs scripts/mornye-voice-prefix.test.mjs scripts/mornye-flac-desktop-tags.test.mjs",
     "test:issue-660": "node --test scripts/issue-660-imported-elrc.test.mjs",
     "test:visualizer-analyser-startup": "node --test scripts/visualizer-analyser-startup.test.mjs",
     "test:fullscreen-visualizer-settings": "node --test scripts/fullscreen-visualizer-settings.test.mjs",
