@@ -120,7 +120,7 @@ function BrowserAudioOutputPicker() {
       <button type="button" onClick={openPicker} disabled={!supported}
         aria-label={t('Audio output: {label}', { label: t(currentLabel) })} aria-expanded={open} aria-haspopup="menu"
         title={supported ? t('Audio output: {label}', { label: t(currentLabel) }) : t('Audio output selection is unavailable')}
-        className={`transition-colors ${open || outputDeviceId !== 'default' ? 'text-accent' : 'text-text/90 hover:text-text'} disabled:cursor-not-allowed disabled:opacity-40`}>
+        className={`transition-[color,transform] hover:scale-110 focus-visible:ring-2 focus-visible:ring-accent ${open || outputDeviceId !== 'default' ? 'text-accent' : 'text-text/90 hover:text-accent'} disabled:cursor-not-allowed disabled:opacity-40`}>
         <DeviceIcon kind={currentKind} />
       </button>
       {open && (
@@ -177,7 +177,7 @@ export default function AudioOutputPicker() {
   if (!native) return <BrowserAudioOutputPicker />
   return (
     <div ref={root} className="relative flex items-center justify-center">
-      <button type="button" onClick={() => setOpen(value => !value)} aria-label={t("Native audio output")} aria-expanded={open} className="text-accent">
+      <button type="button" onClick={() => setOpen(value => !value)} aria-label={t("Native audio output")} aria-expanded={open} className="text-accent transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-accent">
         <Volume2 size={14} />
       </button>
       {open && <div className="absolute bottom-full right-0 z-30 mb-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-elevated p-2 shadow-2xl">

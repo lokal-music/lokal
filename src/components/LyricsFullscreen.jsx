@@ -204,6 +204,7 @@ export default function LyricsFullscreen({ idle = false, onChromeHover = null, s
               darkMode
               fullscreen
               wordSync={wordSync}
+              active={active}
               onSearchRequest={handleSearchRequest}
               textScale={1.15}
               isAutoSynced={isAutoSynced}

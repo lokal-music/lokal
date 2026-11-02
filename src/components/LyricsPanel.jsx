@@ -400,7 +400,7 @@ function Loading() {
 
 export default function LyricsPanel({
   track: shownTrack, progress, fullscreen = false, wordSync = true, onLyricsAvailable, onSearchRequest, textScale = 1, isAutoSynced = false,
-  hideToolbar = false, compact = false, stretchFullscreenWidth = false,
+  hideToolbar = false, compact = false, stretchFullscreenWidth = false, active = true,
   // The full screen player hides the buttons along with its own after a few
   // seconds without the mouse moving.
   toolbarHidden = false,
@@ -540,10 +540,17 @@ export default function LyricsPanel({
     : { trackId: track?.id, result: null, lines: NO_LINES })
 
   // ---- focus (which line the panel is centred on)
-  const nextTimes = useMemo(() => lines.map((l, i) => {
-    const n = lines.slice(i + 1).find(x => x.time != null)
-    return n ? n.time : (track?.duration || (l.time ?? 0) + 4)
-  }), [lines, track?.duration])
+  // Single reverse pass: the former slice/find on each row was quadratic.
+  const nextTimes = useMemo(() => {
+    const times = new Array(lines.length)
+    let next = null
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i]
+      times[i] = next ?? (track?.duration || (line.time ?? 0) + 4)
+      if (line.time != null) next = line.time
+    }
+    return times
+  }, [lines, track?.duration])
 
   useEffect(() => {
     if (!lines.length) return
@@ -566,7 +573,7 @@ export default function LyricsPanel({
   }, [])
 
   useEffect(() => {
-    if (!synced || !lines.length) return
+    if (!active || !synced || !lines.length) return
     let raf = null
     let hidden = isWindowHidden()
     const tick = () => {
@@ -616,7 +623,7 @@ export default function LyricsPanel({
       unsubscribeVisibility()
       if (raf !== null) cancelAnimationFrame(raf)
     }
-  }, [synced, lines, nextTimes, now, wordSync, subLines])
+  }, [active, synced, lines, now, wordSync, subLines])
 
   // When the list re-renders, bring every timed line to its correct resting state.
   useLayoutEffect(() => {
@@ -632,7 +639,7 @@ export default function LyricsPanel({
         paintVoice(refs.subEl.querySelector('[data-voice="timed"]'), sub.words, t, false)
       }
     })
-  }, [lines, synced, wordSync, focusIdx, subLines, now])
+  }, [lines, synced, wordSync, subLines, now])
 
   // ---- scrolling: native scroll for browsing, a staggered glide for following
   // In the compact card, pin the focused line near the top so a Canvas above it

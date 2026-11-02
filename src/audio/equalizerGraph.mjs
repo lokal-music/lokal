@@ -1,4 +1,5 @@
 import { EQ_FREQUENCIES, normalizeEqState } from './equalizerConfig.mjs'
+import { estimateEqHeadroomDb } from './equalizerResponse.mjs'
 
 // Web Audio equivalent of the mobile equalizer processing chain. The rack is
 // instantiated per playback deck, so crossfades keep identical processing.
@@ -6,7 +7,7 @@ import { EQ_FREQUENCIES, normalizeEqState } from './equalizerConfig.mjs'
 const dbGain = db => Math.pow(10, db/20)
 const glide = (param,value,ctx) => {
   const now=ctx.currentTime
-  try { param.cancelScheduledValues(now);param.setTargetAtTime(value,now,.012) }
+  try { param.cancelScheduledValues(now);param.setTargetAtTime(value,now,.035) }
   catch { param.value=value }
 }
 const biquad = (ctx,type,frequency,q=1) => {
@@ -71,7 +72,9 @@ export function createEqualizerRack(ctx) {
       glide(node.gain,active?band.gainDb:0,ctx)
     })
     tone.forEach((node,i)=>glide(node.gain,s.enabled?[s.bassDb,s.midDb,s.trebleDb][i]:0,ctx))
-    glide(preamp.gain,dbGain(s.enabled?s.preampDb:0),ctx)
+    // The float filter stages retain full precision; attenuate their combined
+    // boosted output before it reaches the compressor, limiter or device.
+    glide(preamp.gain,dbGain((s.enabled?s.preampDb:0)-estimateEqHeadroomDb(s,ctx.sampleRate)),ctx)
     const c=s.compressor
     glide(compressor.threshold,s.enabled&&c.enabled?c.thresholdDb:0,ctx)
     glide(compressor.ratio,s.enabled&&c.enabled?c.ratio:1,ctx)
@@ -105,7 +108,7 @@ export function createEqualizerRack(ctx) {
     convolution.buffer=decoded||null
     hasImpulse=!!decoded
   }
-  return {input:first,output,graphic,parametric,tone,filters:[...graphic,...parametric,...tone],apply,setImpulse}
+  return {input:first,output,graphic,parametric,tone,preamp,filters:[...graphic,...parametric,...tone],apply,setImpulse}
 }
 
 const IR_DB='lokal-eq-impulses'
