@@ -125,8 +125,8 @@ function registerArtworkFxHandlers(ipcMain) {
   ipcMain.handle('artwork:mesh', (_, trackId) => meshForTrack(trackId).catch(() => null))
   ipcMain.handle('artwork:meshFromUrl', (_, url) => meshFromRemoteURL(httpsImageURL(url)).catch(() => null))
   ipcMain.handle('artwork:motion', (_, trackId) => motionForTrack(trackId, findFfmpeg()).catch(() => null))
-  ipcMain.handle('artwork:artistVisuals', (_, artistId, name, titles) =>
-    artistVisualsFor(artistId, name, titles).catch(() => null))
+  ipcMain.handle('artwork:artistVisuals', (_, artistId, name, titles, force = false) =>
+    artistVisualsFor(artistId, name, titles, { force: force === true }).catch(() => null))
   ipcMain.handle('artwork:artistMotion', (_, artistId) =>
     artistMotionFor(artistId, settingsMap(), {
       ffmpeg: findFfmpeg(), cacheDir: motionCacheDir(),
