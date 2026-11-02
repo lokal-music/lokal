@@ -169,8 +169,7 @@ export default function EqualizerModal({open,onClose,onChange}){
     }catch(e){setMessage('Could not load impulse response: '+e.message)}
   }
   const removeImpulse=async()=>{
-    await clearImpulseFile();change(previous=>({...previous,convolver:{...previous.convolver,
-      irPath:null,irDisplayName:null,enabled:false}}))
+    await clearImpulseFile();change(previous=>({...previous,convolver:defaults().convolver,activePresetName:null}))
     window.dispatchEvent(new Event('lokal:eq-ir-changed'))
   }
   const updateBand=(i,key,value)=>change(previous=>({...previous,activePresetName:null,
