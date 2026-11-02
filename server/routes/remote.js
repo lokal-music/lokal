@@ -173,9 +173,9 @@ function queryText(value) {
   return String(value || '').trim().slice(0, 100)
 }
 
-function pagination(req, fallback = 30) {
+function pagination(req, fallback = 30, maxLimit = 50) {
   return {
-    limit: Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || fallback)),
+    limit: Math.max(1, Math.min(maxLimit, parseInt(req.query.limit, 10) || fallback)),
     offset: Math.max(0, Math.min(100000, parseInt(req.query.offset, 10) || 0)),
   }
 }
@@ -232,10 +232,28 @@ router.get('/connection', (req, res) => res.json(getRemoteConnectionInfo()))
 
 // All collection endpoints sit below /api/remote and inherit the same
 // REMOTE_TOKEN check as transport commands.
+// The paired phone imports in batches; using the remote UI's 50-row cap
+// made a 5,500-track library require 110 HTTP round trips.
+router.get('/library/file-size/:trackId', async (req, res) => {
+  if (!pairedUser(req, res)) return
+  const trackId = String(req.params.trackId || '')
+  if (!trackId || trackId.length > 512) return res.status(400).json({ error: 'Invalid track ID' })
+  const track = getDB().prepare("SELECT file_path FROM tracks WHERE id=? AND file_path NOT LIKE 'ghost://%'").get(trackId)
+  if (!track?.file_path) return res.status(404).json({ bytes: null })
+  try {
+    const stat = await require('fs').promises.stat(track.file_path)
+    return res.set('Cache-Control', 'private, no-store').json({
+      bytes: stat.isFile() && stat.size > 0 ? stat.size : null
+    })
+  } catch {
+    return res.set('Cache-Control', 'private, no-store').json({ bytes: null })
+  }
+})
+
 router.get('/library/tracks', (req, res) => {
   const db = getDB()
   const q = queryText(req.query.q)
-  const { limit, offset } = pagination(req)
+  const { limit, offset } = pagination(req, 50, 250)
   const uid = String(getRemoteState().userId || 'guest').slice(0, 200)
   const where = ["t.file_path NOT LIKE 'ghost://%'"]
   const params = []
