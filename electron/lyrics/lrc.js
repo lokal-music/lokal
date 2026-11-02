@@ -27,24 +27,36 @@ function stampToSeconds(min, sec, frac) {
 // the marker is anchored to the start of the line (not a lyric mentioning v1).
 function stripVoicePrefix(line) {
   if (!line || typeof line.text !== 'string') return line
-  const tag = line.text.match(/^v(\d{1,4}):\s*/i)
+  // Preserve actual mentions of "v1": only a speaker label at the beginning
+  // followed by a colon (ASCII or full-width) is metadata.
+  const tag = line.text.match(/^\s*v(\d{1,4})\s*[:：]\s*/i)
   if (!tag) return line
   const text = line.text.slice(tag[0].length).trimStart()
   if (!text) return line
 
   let words = line.words
   if (Array.isArray(words) && words.length) {
-    words = words.slice()
-    const first = String(words[0].word || '')
-    const leading = first.match(/^v\d{1,4}:\s*/i)
-    if (leading) {
-      const remainder = first.slice(leading[0].length)
-      if (remainder) words[0] = { ...words[0], word: remainder }
-      else words.shift()
+    // Mornye's enhanced-LRC tags may split "v1" and ":" across two timed
+    // units. Remove the prefix across units without changing surviving times.
+    const timedTag = joinUnits(words).match(/^v\d{1,4}\s*[:：]\s*/i)
+    if (!timedTag) {
+      words = [] // Do not render a stale prefix from the word timeline.
     } else {
-      // A malformed enhanced lyric has no safe word-to-text alignment after
-      // removing its marker. Keep line timing rather than inventing word data.
-      words = []
+      let remaining = timedTag[0].length
+      const cleaned = []
+      for (const word of words) {
+        const part = String(word.word || '') + (word.space ? ' ' : '')
+        if (remaining >= part.length) {
+          remaining -= part.length
+          continue
+        }
+        const tail = part.slice(remaining)
+        remaining = 0
+        const core = tail.trim()
+        if (core) cleaned.push({ ...word, word: core, space: /\s$/.test(tail) })
+      }
+      words = remaining ? [] : cleaned
+      if (words.length) words[words.length - 1].space = false
     }
   }
   return { ...line, text, words, agent: line.agent || 'v' + Number(tag[1]) }
