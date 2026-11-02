@@ -16,9 +16,10 @@ export const EQ_PRESETS = [
   { id:'builtin_treble_boost', name:'Treble Boost', graphicGainsDb:[-2,-2,-2,-1,0,1,3,4,5,6] },
 ]
 export const defaults = () => ({
-  enabled:true, mode:'graphic', preampDb:0,
+  enabled:true, mode:'graphic', preampDb:0, autoHeadroom:true,
   graphicGainsDb:Array(10).fill(0),
-  parametricBands:PARAMETRIC_FREQUENCIES.slice(0,10).map(frequencyHz=>({enabled:true,frequencyHz,gainDb:0,q:1,type:'peaking'})),
+  // Spread initial parametric nodes across the whole spectrum (old first 10 only covered bass).
+  parametricBands:[25,40,63,100,160,250,400,630,1000,1600,2500,4000,6300,10000,16000].map(frequencyHz=>({enabled:true,frequencyHz,gainDb:0,q:1,type:'peaking'})),
   activePresetName:null, bassDb:0,midDb:0,trebleDb:0,
   compressor:{enabled:false,thresholdDb:-18,ratio:3,attackMs:12,releaseMs:140,makeupGainDb:0},
   limiter:{enabled:false,inputGainDb:0,ceilingDb:-0.8,releaseMs:80},
@@ -38,6 +39,7 @@ export function normalizeEqState(input) {
     enabled:boolean(s.enabled,true),
     mode:s.mode==='parametric'?'parametric':'graphic',
     preampDb:range(s,'preampDb',-24,24,0),
+    autoHeadroom:boolean(s.autoHeadroom,true),
     graphicGainsDb:Array.from({length:10},(_,i)=>clamp(graphic[i],-20,20,0)),
     parametricBands:(bands.length?bands:d.parametricBands).map((b,i)=>({
       enabled:boolean(b?.enabled,true),frequencyHz:range(b,'frequencyHz',20,20000,PARAMETRIC_FREQUENCIES[i]||1000),
@@ -51,6 +53,7 @@ export function normalizeEqState(input) {
       releaseMs:range(comp,'releaseMs',20,500,140),makeupGainDb:range(comp,'makeupGainDb',-20,20,0)},
     limiter:{enabled:boolean(lim.enabled),inputGainDb:range(lim,'inputGainDb',0,12,0),
       ceilingDb:range(lim,'ceilingDb',-12,0,-.8),releaseMs:range(lim,'releaseMs',20,300,80)},
+    // FX tempo is retained in the preset schema for mobile compatibility, but not applied on desktop.
     fx:{enabled:boolean(fx.enabled),balance:range(fx,'balance',-1,1,0),tempo:range(fx,'tempo',.5,2,1),
       damp:range(fx,'damp',0,1,.35),filterHz:range(fx,'filterHz',200,18000,6800),
       delayMs:range(fx,'delayMs',10,1600,240),size:range(fx,'size',0,1,.55),
