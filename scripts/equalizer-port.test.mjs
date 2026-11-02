@@ -35,6 +35,9 @@ test('desktop keeps the mobile EQ state schema and 31-band ceiling',()=>{
   assert.equal(s.parametricBands[0].q,.2)
   assert.equal(s.mode,'parametric')
   assert.equal(s.fx.tempo,1)
+  assert.equal(s.autoHeadroom,true)
+  assert.equal(defaults().parametricBands.length,15)
+  assert.equal(defaults().parametricBands.at(-1).frequencyHz,16000)
 })
 test('legacy desktop 5-/10-band gains migrate without changing audible gains',()=>{
   const st=storage({'lokal-eq':JSON.stringify([5,4,3,2,1])})
@@ -76,6 +79,7 @@ test('two independent DSP racks can apply the same EQ without sharing audio node
   assert.equal(a.parametric[0].type,'lowshelf')
   assert.equal(b.parametric[0].gain.value,5)
   assert.equal(a.graphic[0].gain.value,0)
+  assert.ok(a.preamp.gain.value < 1, 'boosted filter receives attenuation to reduce clipping')
   a.apply({...s,enabled:false})
   assert.equal(a.parametric[0].gain.value,0)
   assert.equal(b.parametric[0].gain.value,5)
@@ -85,6 +89,17 @@ test('two independent DSP racks can apply the same EQ without sharing audio node
   assert.ok(nodes.some(n=>n.kind==='Gain'&&n.gain.value===.5))
 })
 
+test('automatic headroom attenuates EQ boosts and can be disabled',()=>{
+  const {ctx}=audioMock()
+  const rack=createEqualizerRack(ctx)
+  const state={...defaults(),graphicGainsDb:[7,0,0,0,0,0,0,0,0,0]}
+  rack.apply(state)
+  assert.ok(rack.preamp.gain.value < 0.5)
+  rack.apply({...state,autoHeadroom:false})
+  assert.equal(rack.preamp.gain.value,1)
+  rack.apply(defaults())
+  assert.equal(rack.preamp.gain.value,1)
+})
 test('response curve matches flat bypass and boosted parametric peak',()=>{
   const freqs=[50,1000,10000]
   const flat=equalizerResponseDb(defaults(),freqs)
