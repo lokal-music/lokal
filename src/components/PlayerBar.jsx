@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Heart, FolderOpen, AudioWaveform, Mic2, PanelRight, Maximize2, ListMusic, Plus, Moon, X, Radio, Gem, Cast, Clock, ListEnd, Disc3, Edit2, Camera, Download } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Heart, FolderOpen, AudioWaveform, Mic2, PanelRight, Maximize2, ListMusic, Plus, Moon, X, Radio, Gem, Cast, Clock, ListEnd, Disc3, Edit2, Camera, Download, SlidersHorizontal } from 'lucide-react'
 import { usePlayerStore, useAppStore } from '../store/player'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate } from 'react-router-dom'
@@ -18,6 +18,7 @@ import Lightning from '../visualizers/Lightning'
 import { useAppearanceFlag } from '../appearanceFlags'
 import Modal from './Modal'
 import AudioPipelineModal from './AudioPipelineModal'
+import EqualizerModal from './EqualizerModal'
 import { trackArtURL, isStreamed, streamLabel } from '../onlineTracks'
 import SaveToLibraryButton from './SaveToLibraryButton'
 import { TIERS, formatLabel, qualityTagLabel, isSuspect, tierOf, losslessMenuItem } from '../quality'
@@ -100,6 +101,7 @@ export default function PlayerBar() {
   const { user, openAddToPlaylist } = useAppStore()
   const [likeAnim, setLikeAnim] = useState(false)
   const [showAudioPipeline, setShowAudioPipeline] = useState(false)
+  const [showEqualizer, setShowEqualizer] = useState(false)
   const [editingTrack, setEditingTrack] = useState(null)
   const [keepCommaArtists, setKeepCommaArtists] = useState([])
   const volumeWheelRef = useVolumeWheel(volume, setVolume)
@@ -495,17 +497,18 @@ export default function PlayerBar() {
                <Waveform isPlaying={isPlaying} className="w-full" />}
             </div>
           )}
+          <button onClick={toggleLyricsButton} className={`transition-[color,transform] hover:scale-110 focus-visible:text-accent ${(exclusiveSidePanels ? (showRightSidebar && sidePanelView === 'lyrics') : showLyricsPanel) ? 'text-accent' : 'text-text/90 hover:text-accent'}`} title={t("Lyrics")}><Mic2 size={16} /></button>
+          <button onClick={() => setShowEqualizer(true)} aria-label={t('Equalizer')} title={t('Equalizer')} aria-haspopup="dialog" className="text-text/90 hover:text-accent transition-[color,transform] hover:scale-110 focus-visible:text-accent"><SlidersHorizontal size={16}/></button>
           {!castDevice && <AudioOutputPicker />}
-          <button onClick={toggleLyricsButton} className={`transition-colors ${(exclusiveSidePanels ? (showRightSidebar && sidePanelView === 'lyrics') : showLyricsPanel) ? 'text-accent' : 'text-text/90 hover:text-accent'}`} title={t("Lyrics")}><Mic2 size={16} /></button>
-          <button onClick={toggleQueueButton} className={`transition-colors ${(exclusiveSidePanels ? (showRightSidebar && sidePanelView === 'queue') : showQueue) ? 'text-accent' : 'text-text/90 hover:text-text'}`} title={t("Queue")}><ListMusic size={16} /></button>
-          <button onClick={toggleRightSidebar} className={`transition-colors ${showRightSidebar ? 'text-accent' : 'text-text/90 hover:text-text'}`} title={t("Now Playing")}>< PanelRight size={16} /></button>
-          <button onClick={toggleMiniPlayer} disabled={!currentTrack} className="text-text/90 hover:text-accent transition-colors disabled:opacity-30" title={t("Mini Player")}><Radio size={15} /></button>
-          <button onClick={toggleFullscreen} disabled={!currentTrack} className="text-text/90 hover:text-text transition-colors disabled:opacity-30" title={t("Fullscreen")}><Maximize2 size={15} /></button>
+          <button onClick={toggleQueueButton} className={`transition-[color,transform] hover:scale-110 focus-visible:text-accent ${(exclusiveSidePanels ? (showRightSidebar && sidePanelView === 'queue') : showQueue) ? 'text-accent' : 'text-text/90 hover:text-accent'}`} title={t("Queue")}><ListMusic size={16} /></button>
+          <button onClick={toggleRightSidebar} className={`transition-[color,transform] hover:scale-110 focus-visible:text-accent ${showRightSidebar ? 'text-accent' : 'text-text/90 hover:text-accent'}`} title={t("Now Playing")}>< PanelRight size={16} /></button>
+          <button onClick={toggleMiniPlayer} disabled={!currentTrack} className="text-text/90 hover:text-accent transition-[color,transform] hover:scale-110 focus-visible:text-accent disabled:opacity-30" title={t("Mini Player")}><Radio size={15} /></button>
+          <button onClick={toggleFullscreen} disabled={!currentTrack} className="text-text/90 hover:text-accent transition-[color,transform] hover:scale-110 focus-visible:text-accent disabled:opacity-30" title={t("Fullscreen")}><Maximize2 size={15} /></button>
           
           <div className="relative flex items-center justify-center">
             <button 
               onClick={() => setShowSleepTimer(!showSleepTimer)} 
-              className={`flex items-center justify-center transition-colors ${sleepTimerEndTime ? 'text-accent' : 'text-text/90 hover:text-text'}`} 
+              className={`flex items-center justify-center transition-[color,transform] hover:scale-110 focus-visible:text-accent ${sleepTimerEndTime ? 'text-accent' : 'text-text/90 hover:text-accent'}`} 
               title={sleepTimerEndTime ? `${t("Sleep Timer")}: ${sleepTimerDisplay}` : t("Sleep Timer")}
             >
               <Moon size={16} />
@@ -518,7 +521,7 @@ export default function PlayerBar() {
           </div>
           
           <div className="flex items-center gap-1.5 ml-1">
-            <button onClick={() => setVolume(volume > 0 ? 0 : 0.8)} className="text-text/90 hover:text-text transition-colors">
+            <button onClick={() => setVolume(volume > 0 ? 0 : 0.8)} className="text-text/90 hover:text-accent transition-[color,transform] hover:scale-110 focus-visible:text-accent">
               {volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
             </button>
             <input ref={volumeWheelRef} type="range" min={0} max={1} step={0.01} value={volume}
@@ -528,6 +531,7 @@ export default function PlayerBar() {
         </div>
       </div>
 
+      <EqualizerModal open={showEqualizer} onClose={() => setShowEqualizer(false)} />
       <Modal open={showSleepTimer} onClose={() => setShowSleepTimer(false)} title={t("Sleep Timer")} width="max-w-xs">
         <div className="space-y-3">
           <p className="text-xs text-muted">
