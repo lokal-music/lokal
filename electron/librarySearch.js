@@ -4,7 +4,6 @@
 // words and an artist word). Results where the whole query appears together
 // come first.
 
-const { desktopPreferredLibraryClause } = require('./libraryDevicePreference')
 const MAX_WORDS = 8
 
 /** "Fame is  for Fools" -> ['fame', 'is', 'for', 'fools'] */
@@ -48,7 +47,7 @@ function searchTracks(db, query, limit = 40) {
   const match = wordsMatch(query, TRACK_COLUMNS)
   if (!match) return []
   const order = phraseFirst(query, 'title', TRACK_COLUMNS)
-  return db.prepare(`SELECT * FROM tracks WHERE file_path NOT LIKE 'ghost://%' AND ${desktopPreferredLibraryClause()} AND ${match.sql}
+  return db.prepare(`SELECT * FROM tracks WHERE file_path NOT LIKE 'ghost://%' AND COALESCE(download_source, '') <> 'mobile' AND ${match.sql}
     ORDER BY ${order.sql}, IFNULL(play_count, 0) DESC, title COLLATE NOCASE LIMIT ?`).all(...match.params, ...order.params, limit)
 }
 
@@ -59,7 +58,9 @@ function searchTracks(db, query, limit = 40) {
 function searchArtists(db, query, tracks = [], limit = 5) {
   const words = searchWords(query)
   if (!words.length) return []
-  const byName = db.prepare(`SELECT a.*, COUNT(atl.track_id) as track_count FROM artists a JOIN artist_track_links atl ON atl.artist_id = a.id
+  const byName = db.prepare(`SELECT a.*, COUNT(atl.track_id) as track_count FROM artists a
+    JOIN artist_track_links atl ON atl.artist_id = a.id
+    JOIN tracks tx ON tx.id = atl.track_id AND COALESCE(tx.download_source, '') <> 'mobile' AND tx.file_path NOT LIKE 'ghost://%'
     WHERE a.name LIKE ? ESCAPE '\\' GROUP BY a.id LIMIT ?`).all(likeText(String(query).trim()), limit)
   const ids = tracks.map(track => track.id).slice(0, 40)
   // Short words ("is", "of") are in too many names to say anything.
@@ -86,10 +87,10 @@ const WORD = /[\p{L}\p{N}']+/gu
 let vocabulary = null // { stamp, words: Map(word -> uses) }
 
 function libraryWords(db) {
-  const stamp = (() => { try { const r = db.prepare("SELECT COUNT(*) AS n, MAX(rowid) AS last FROM tracks WHERE file_path NOT LIKE 'ghost://%'").get(); return `${r.n}:${r.last}` } catch { return '' } })()
+  const stamp = (() => { try { const r = db.prepare("SELECT COUNT(*) AS n, MAX(rowid) AS last FROM tracks WHERE file_path NOT LIKE 'ghost://%' AND COALESCE(download_source, '') <> 'mobile'").get(); return `${r.n}:${r.last}` } catch { return '' } })()
   if (vocabulary && vocabulary.stamp === stamp) return vocabulary.words
   const words = new Map()
-  const rows = (() => { try { return db.prepare("SELECT title, artist, album, album_artist FROM tracks WHERE file_path NOT LIKE 'ghost://%'").all() } catch { return [] } })()
+  const rows = (() => { try { return db.prepare("SELECT title, artist, album, album_artist FROM tracks WHERE file_path NOT LIKE 'ghost://%' AND COALESCE(download_source, '') <> 'mobile'").all() } catch { return [] } })()
   for (const row of rows) {
     for (const text of [row.title, row.artist, row.album, row.album_artist]) {
       for (const word of String(text || '').toLowerCase().match(WORD) || []) {

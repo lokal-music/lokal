@@ -8,10 +8,10 @@ const { searchTracks, searchArtists, wordsMatch, searchWords } = require('../ele
 
 function library() {
   const db = new DatabaseSync(':memory:')
-  db.exec(`CREATE TABLE tracks (id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT, album_artist TEXT, file_path TEXT, play_count INTEGER);
+  db.exec(`CREATE TABLE tracks (id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT, album_artist TEXT, file_path TEXT, play_count INTEGER, download_source TEXT DEFAULT NULL);
     CREATE TABLE artists (id TEXT PRIMARY KEY, name TEXT);
     CREATE TABLE artist_track_links (artist_id TEXT, track_id TEXT);`)
-  const add = db.prepare('INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?)')
+  const add = db.prepare('INSERT INTO tracks (id, title, artist, album, album_artist, file_path, play_count) VALUES (?, ?, ?, ?, ?, ?, ?)')
   add.run('t1', 'Fame Is for Fools', 'Hallex M', 'Fame Is for Fools', 'Hallex M', '/m/fame.flac', 3)
   add.run('t2', 'Fools Gold', 'Stone Roses', 'Stone Roses', null, '/m/gold.flac', 9)
   add.run('t3', 'Is This Fame', 'Other Band', 'Fame Is for Fools Covers', null, '/m/cover.mp3', 1)

@@ -2530,7 +2530,7 @@ function registerV4Handlers(ipcMain) {
   ipcMain.handle('scanner:searchAlbums', (_, q) => {
     const match = require('../librarySearch').wordsMatch(q, ['album', 'album_artist', 'artist'])
     if (!match) return []
-    const rows = getDB().prepare(`${albumRowsQuery(`AND ${match.sql}`)} ORDER BY album ASC`).all(...match.params)
+    const rows = getDB().prepare(`${albumRowsQuery(`AND COALESCE(download_source, '') <> 'mobile' AND ${match.sql}`)} ORDER BY album ASC`).all(...match.params)
     return enrichAlbumRows(rows)
   })
   ipcMain.handle('scanner:deleteTracks', async (_, ids) => { const db = getDB(); const filePaths = (ids || []).map(id => db.prepare('SELECT file_path FROM tracks WHERE id = ?').get(id)?.file_path); const del = db.transaction((ids) => { for (const id of ids) { db.prepare('DELETE FROM artist_track_links WHERE track_id = ?').run(id); db.prepare('DELETE FROM playlist_tracks WHERE track_id = ?').run(id); db.prepare('DELETE FROM user_likes WHERE track_id = ?').run(id); db.prepare('DELETE FROM play_history WHERE track_id = ?').run(id); try { db.prepare('DELETE FROM listening_events WHERE track_id = ?').run(id) } catch {}; db.prepare('DELETE FROM lyrics_cache WHERE track_id = ?').run(id); try { db.prepare('DELETE FROM lyrics_translations WHERE track_id = ?').run(id) } catch {}; db.prepare('DELETE FROM tracks WHERE id = ?').run(id) } }); del(ids); forgetDownloads(ids); return { success: true, files: await removeTrackFiles(db, filePaths) } })

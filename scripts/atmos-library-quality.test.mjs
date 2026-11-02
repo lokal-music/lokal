@@ -97,7 +97,9 @@ test('Audio Quality summary arranges all six categories in balanced responsive r
     'five columns leave the sixth category orphaned at desktop widths')
   assert.match(page, /\['atmos', 'hires', 'lossless', 'high', 'low', 'suspect'\]\.map\(tier =>/,
     'Atmos and the Suspect diagnostic both remain visible and selectable')
-  assert.match(page, /onClick=\{\(\) => setFilter\(tier\)\}/)
+  assert.match(page, /onClick=\{\(\) => selectQualityFilter\(tier\)\}/)
+  assert.match(page, /const selectQualityFilter = tier => \{[\s\S]*?\+\+bulkRequestRef\.current[\s\S]*?setBulkLoading\(null\)[\s\S]*?setFilter\(tier\)/,
+    'changing quality tier cancels stale in-progress bulk requests')
   assert.match(page, /line-clamp-2/,
     'allow the category descriptions to use two lines instead of clipping')
 })

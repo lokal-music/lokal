@@ -120,7 +120,7 @@ function searchLyricsEntries(db, query) {
     'SELECT t.*, lc.content',
     'FROM lyrics_cache lc',
     'JOIN tracks t ON t.id = lc.track_id',
-    "WHERE t.file_path NOT LIKE 'ghost://%'",
+    "WHERE t.file_path NOT LIKE 'ghost://%' AND COALESCE(t.download_source, '') <> 'mobile'",
     'AND (' + candidateSql + ')',
     'ORDER BY t.play_count DESC, t.title',
     'LIMIT ' + SQL_CANDIDATE_LIMIT,
