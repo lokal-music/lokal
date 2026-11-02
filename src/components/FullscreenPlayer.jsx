@@ -1064,6 +1064,7 @@ export default function FullscreenPlayer() {
                         darkMode
                         fullscreen
                         wordSync={wordSync}
+                        active={isPanelVisible && fullscreenPanel === 'lyrics' && !lyricsMode}
                         onSearchRequest={() => setShowSearch(true)}
                         textScale={1.6}
                         stretchFullscreenWidth
