@@ -93,3 +93,13 @@ test('artwork endpoint requires pairing, source ownership and bounded JPEG bytes
   assert.match(source, /file_path LIKE 'ghost:\/\/link\/%'/)
   assert.match(icon, /Played on Lokal Mobile · audio not stored on this PC/)
 })
+
+test('phone audio copies preserve external album art only when missing', () => {
+  const remote = readFileSync(new URL('../server/routes/remote.js', import.meta.url), 'utf8')
+  const importer = readFileSync(new URL('../server/linkUpload.js', import.meta.url), 'utf8')
+  assert.match(remote, /router\.post\('\/files\/:trackId\/artwork'/)
+  assert.match(remote, /row\.download_source !== 'mobile'/)
+  assert.match(remote, /artwork_path IS NULL OR artwork_path=''/)
+  assert.match(importer, /ghost\?\.artwork_path/)
+  assert.match(importer, /await fs\.pathExists\(ghost\.artwork_path\)/)
+})
