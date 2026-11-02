@@ -37,6 +37,6 @@ jobs:
           node --check electron/preload.js
       - name: Run import, embedded, ELRC and lyrics tests
         run: |
-          node --test scripts/issue-660-imported-elrc.test.mjs scripts/issue-458-regression.test.mjs scripts/lrc-voice-prefix.test.mjs scripts/lrc-translation-lines.test.mjs
+          node --test scripts/issue-660-imported-elrc.test.mjs scripts/issue-458-regression.test.mjs scripts/lrc-voice-prefix.test.mjs scripts/mornye-voice-prefix.test.mjs scripts/mornye-flac-desktop-tags.test.mjs scripts/lrc-translation-lines.test.mjs
       - name: Compile desktop renderer
         run: npx vite build

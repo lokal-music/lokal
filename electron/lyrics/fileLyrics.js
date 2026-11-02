@@ -154,16 +154,17 @@ function lyricsFromMeta(meta) {
     else if (e && typeof e.text === 'string' && e.text.trim()) texts.push(e.text)
     else if (e && Array.isArray(e.syncText) && e.syncText.length) sylts.push(e)
   }
-  if (!texts.length) {
-    for (const tag of Object.values(meta?.native || {}).flat()) {
-      if (!tag || !LYRIC_IDS.has(tag.id)) continue
+  // Always inspect native lyric frames even when music-metadata provides
+  // common.lyrics. Its flattened common text can lose LRC timestamps, while
+  // Mornye FLACs also carry the original in native Vorbis comments.
+  for (const tag of Object.values(meta?.native || {}).flat()) {
+    if (!tag) continue
+    if (LYRIC_IDS.has(tag.id)) {
       const v = tag.value
       const text = typeof v === 'string' ? v : typeof v?.text === 'string' ? v.text : ''
       if (text.trim()) texts.push(text)
     }
-  }
-  for (const tag of Object.values(meta?.native || {}).flat()) {
-    if (tag?.id === 'SYLT' && tag.value && !sylts.includes(tag.value)) sylts.push(tag.value)
+    if (tag.id === 'SYLT' && tag.value && !sylts.includes(tag.value)) sylts.push(tag.value)
   }
   const clean = texts.map(t => fixMojibake(t).replace(/\r\n?/g, '\n').trim()).filter(Boolean)
   const syncedText = clean.find(isSyncedText)
@@ -175,12 +176,30 @@ function lyricsFromMeta(meta) {
   return clean[0] || null
 }
 
-/** What the tag editor shows: { text, synced } straight from the file's tags. */
+// Sanitize only the editor-facing copy; reading a tag does not rewrite it.
+// The canonical lyrics player strips vocal-role markers independently.
+function lyricsForEditor(text) {
+  const { stripVoicePrefix } = require('./lrc')
+  return String(text || '').replace(/\r\n?/g, '\n').split('\n').map(line => {
+    const stamps = line.match(/^((?:\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\])+)/)
+    let head = stamps ? stamps[1] : ''
+    let body = line.slice(head.length)
+    // Enhanced LRC can place the first word stamp before the role marker.
+    const wordStamp = body.match(/^(<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>)/)
+    if (wordStamp) {
+      head += wordStamp[1]
+      body = body.slice(wordStamp[1].length)
+    }
+    return head + stripVoicePrefix({ text: body }).text
+  }).join('\n')
+}
+
+/** Editor-facing lyrics, with source tags left untouched until explicit Save. */
 async function readFileLyrics(filePath) {
   const lib = metadata()
   if (!lib || !filePath || !fs.existsSync(filePath)) return { text: '', synced: false }
   const meta = await lib.parseFile(filePath, { duration: false, skipCovers: true })
-  const text = lyricsFromMeta(meta) || ''
+  const text = lyricsForEditor(lyricsFromMeta(meta) || '')
   return { text, synced: isSyncedText(text) }
 }
 
@@ -285,4 +304,4 @@ function sidecarFor(filePath) {
   return null
 }
 
-module.exports = { lyricsKind, fixMojibake, readFileLyrics, writeFileLyrics, fromResult, lyricsFromMeta, isSyncedText, parseLrc, syltToLrc, sidecarFor, setPrivateField }
+module.exports = { lyricsKind, fixMojibake, readFileLyrics, writeFileLyrics, fromResult, lyricsFromMeta, lyricsForEditor, isSyncedText, parseLrc, syltToLrc, sidecarFor, setPrivateField }
