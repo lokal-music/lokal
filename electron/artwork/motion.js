@@ -452,4 +452,4 @@ async function motionCoverFor(db, track, { settings = {}, cacheDir, ffmpeg } = {
   return file ? { file, source: found.source, tall: !!found.tall } : null
 }
 
-module.exports = { motionCoverFor, fromApple, fromTidal, fromCommunity, fromM8tec, artistsMatch, cleanTitle, norm, chooseVariant, SOURCES, DEFAULT_SOURCES }
+module.exports = { motionCoverFor, fromApple, fromTidal, fromCommunity, fromM8tec, artistsMatch, cleanTitle, norm, chooseVariant, SOURCES, DEFAULT_SOURCES, cachedClip }

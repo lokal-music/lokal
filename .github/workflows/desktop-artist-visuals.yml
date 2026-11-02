@@ -1,0 +1,51 @@
+name: Desktop artist editorial visuals
+
+on:
+  pull_request:
+    paths:
+      - 'electron/artwork/artistVisuals.js'
+      - 'electron/artwork/motion.js'
+      - 'electron/ipc/artworkFx.js'
+      - 'electron/preload.js'
+      - 'src/artistVisuals.js'
+      - 'src/components/ArtistEditorialMedia.jsx'
+      - 'src/pages/Artist.jsx'
+      - 'src/components/OnlineArtist.jsx'
+      - 'src/api.js'
+      - 'scripts/artist-visuals.test.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-artist-visuals.yml'
+  push:
+    paths:
+      - 'electron/artwork/artistVisuals.js'
+      - 'electron/artwork/motion.js'
+      - 'electron/ipc/artworkFx.js'
+      - 'src/artistVisuals.js'
+      - 'src/components/ArtistEditorialMedia.jsx'
+      - 'scripts/artist-visuals.test.mjs'
+      - '.github/workflows/desktop-artist-visuals.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artist-visuals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - name: Verify editorial parsing, identity, cache and persistence
+        run: npm run test:artist-visuals
+      - name: Verify moving cover compatibility
+        run: npm run test:motion-covers
+      - name: Validate desktop syntax
+        run: npm run test:electron-syntax
+      - name: Compile renderer
+        run: |
+          npm run gen:icons
+          npx vite build

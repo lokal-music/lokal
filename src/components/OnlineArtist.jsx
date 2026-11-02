@@ -25,6 +25,8 @@ import { useAppStore } from '../store/player'
 import { api } from '../api'
 import FollowArtistButton from './FollowArtistButton'
 import { useTranslation } from '../i18n'
+import { useArtistVisuals } from '../artistVisuals'
+import { ArtistTitle, ArtistMotionPortrait } from './ArtistEditorialMedia'
 
 /**
  * "In library" (all of a release) or "1/9" / "1 song" (part of it), for a
@@ -284,6 +286,8 @@ export default function OnlineArtist({ id, name: givenName, anchor = null, catal
     return () => { current = false; window.removeEventListener('lokal:refresh', read) }
   }, [id, catalogueIdentity?.catalogue, catalogueIdentity?.artistId])
   const { songs, albums, name } = data
+  const artistEvidence = useMemo(() => [...songs.tracks.map(track => track.title), ...albums.items.map(album => album.title)].filter(Boolean), [songs.tracks, albums.items])
+  const artistVisuals = useArtistVisuals(`online:${catalogueIdentity?.catalogue || anchor?.provider || 'unknown'}:${catalogueIdentity?.artistId || anchor?.artistId || id}`, name, artistEvidence)
   const [busy, setBusy] = useState(false)
   // The artist's picture, big (click it).
   const [zoom, setZoom] = useState(false)
@@ -304,13 +308,14 @@ export default function OnlineArtist({ id, name: givenName, anchor = null, catal
         {image ? <img src={image} alt="" className="h-full w-full object-cover opacity-30 blur-sm" /> : <div className="h-full w-full bg-gradient-to-b from-accent/8 to-transparent" />}
         <div className="absolute inset-0 bg-gradient-to-t from-base via-base/20" />
         <div className="absolute bottom-5 left-8 right-8 flex items-end gap-5">
-          <button type="button" onClick={image ? () => setZoom(true) : undefined} disabled={!image} title={image ? t('View the picture') : undefined} className={`flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${image ? 'cursor-zoom-in' : 'cursor-default'}`}>
+          <button type="button" onClick={image ? () => setZoom(true) : undefined} disabled={!image} title={image ? t('View the picture') : undefined} className={`relative flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${image ? 'cursor-zoom-in' : 'cursor-default'}`}>
             {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <Music size={36} className="text-muted" />}
+            <ArtistMotionPortrait src={artistVisuals.motionSrc} />
           </button>
           <ImageZoom src={image} alt={name} open={zoom} onClose={() => setZoom(false)} />
           <div className="min-w-0">
             <p className="mb-1 text-xs font-display uppercase tracking-widest text-muted">{t('Artist · Online')}</p>
-            <h1 className="truncate text-3xl font-display text-white">{name}</h1>
+            <ArtistTitle name={name} logoSrc={artistVisuals.logoSrc} logoAspect={artistVisuals.logoAspect} />
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => play(songs.tracks[0])} disabled={!songs.tracks.length} className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-medium text-base transition-opacity hover:opacity-90 disabled:opacity-40"><Play size={15} fill="currentColor" /> {t('Play')}</button>
               <button onClick={() => playNextMany(songs.tracks)} disabled={!songs.tracks.length} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/30 px-4 py-2 text-sm text-white backdrop-blur-sm transition-colors hover:border-accent/50 disabled:opacity-40"><Clock size={15} /> {t('Play next')}</button>

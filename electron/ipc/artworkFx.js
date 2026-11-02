@@ -7,6 +7,7 @@ const fs = require('fs')
 const { getDB, getStorageDir } = require('./db')
 const { meshFromImage } = require('../artwork/mesh')
 const { motionCoverFor } = require('../artwork/motion')
+const { artistVisualsFor, artistMotionFor } = require('../artwork/artistVisuals')
 const { httpsImageURL } = require('../playlists/remoteCover')
 
 const MAX_REMOTE_ARTWORK_BYTES = 10 * 1024 * 1024
@@ -124,6 +125,12 @@ function registerArtworkFxHandlers(ipcMain) {
   ipcMain.handle('artwork:mesh', (_, trackId) => meshForTrack(trackId).catch(() => null))
   ipcMain.handle('artwork:meshFromUrl', (_, url) => meshFromRemoteURL(httpsImageURL(url)).catch(() => null))
   ipcMain.handle('artwork:motion', (_, trackId) => motionForTrack(trackId, findFfmpeg()).catch(() => null))
+  ipcMain.handle('artwork:artistVisuals', (_, artistId, name, titles, force = false) =>
+    artistVisualsFor(artistId, name, titles, { force: force === true }).catch(() => null))
+  ipcMain.handle('artwork:artistMotion', (_, artistId, name, titles) =>
+    artistMotionFor(artistId, name, titles, settingsMap(), {
+      ffmpeg: findFfmpeg(), cacheDir: motionCacheDir(),
+    }).catch(() => null))
   ipcMain.handle('artwork:spotifyCheck', () => spotifyCheck())
 }
 
