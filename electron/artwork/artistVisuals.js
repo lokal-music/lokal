@@ -204,7 +204,19 @@ async function lookupApple(artistName, knownTitles, { fetchImpl, directory }) {
     // The old /artist/-/ID fallback redirected, but the old HTTP client
     // rejected redirects entirely, preventing the page from loading.
     const canonical = safeURL(candidate.artistLinkUrl)
-    const artistIdPattern = new RegExp('/' + String(candidate.artistId) + '/?
+    const artistIdPattern = new RegExp('/' + String(candidate.artistId) + '/?$')
+    const page = canonical && artistIdPattern.test(new URL(canonical).pathname)
+      ? canonical : safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
+    const html = await boundedFetch(page, { fetchImpl, kind: 'page', maxBytes: 6 * 1024 * 1024 })
+    if (!html) {
+      console.warn('[artist-visuals] Apple artist page unavailable:', artistName)
+      continue
+    }
+    const visuals = parseVisuals(html.toString('utf8'))
+    if (!visuals) {
+      console.info('[artist-visuals] No artist logo or motion artwork supplied:', artistName)
+      continue
+    }
     const logoFile = visuals.logoURL
       ? await saveLogo(visuals.logoURL, candidate.artistId, directory, opts).catch(() => null)
       : null
@@ -267,76 +279,3 @@ async function artistMotionFor(artistId, artistName, titles, settings, { ffmpeg,
 }
 
 module.exports = { parseVisuals, safeURL, acceptedCache, artistVisualsFor, artistMotionFor, boundedFetch }
-)
-    const page = canonical && artistIdPattern.test(new URL(canonical).pathname)
-      ? canonical : safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
-    const html = await boundedFetch(page, { fetchImpl, kind: 'page', maxBytes: 6 * 1024 * 1024 })
-    if (!html) {
-      console.warn('[artist-visuals] Apple artist page unavailable:', artistName)
-      continue
-    }
-    const visuals = parseVisuals(html.toString('utf8'))
-    if (!visuals) {
-      console.info('[artist-visuals] No artist logo or motion artwork supplied:', artistName)
-      continue
-    }
-    const logoFile = visuals.logoURL
-      ? await saveLogo(visuals.logoURL, candidate.artistId, directory, opts).catch(() => null)
-      : null
-    return {
-      artistId: '', name: artistName, proof, 
-      logoFile, logoAspect: visuals.logoAspect, motionURL: visuals.motionURL,
-      fetchedAt: Date.now()
-    }
-  }
-  return null
-}
-
-async function artistVisualsFor(artistId, artistName, titles, options = {}) {
-  const name = String(artistName || '').trim()
-  const known = new Set((Array.isArray(titles) ? titles : []).map(norm).filter(Boolean))
-  if (!artistId || !name || !known.size) return null
-  const directory = options.directory || path.join(getStorageDir(), 'artist-editorial')
-  const key = String(artistId)
-  const stored = memory.get(key) || readCache(key, directory)
-  const valid = acceptedCache(stored, name, known)
-  if (!options.force && valid && Date.now() - stored.fetchedAt < (stored.logoFile || stored.motionURL ? HIT_TTL : MISS_TTL)) {
-    return publicResult(stored)
-  }
-  if (!pending.has(key)) {
-    const job = (async () => {
-      let result = null
-      try {
-        result = await lookupApple(name, known, { ...options, directory })
-        if (result) {
-          result.artistId = key
-          await fs.promises.mkdir(directory, { recursive: true })
-          const dest = cachePath(key, directory)
-          const temp = dest + '.' + process.pid + '.tmp'
-          await fs.promises.writeFile(temp, JSON.stringify(result))
-          await fs.promises.rename(temp, dest)
-          memory.set(key, result)
-        }
-      } catch { /* Editorial data is optional. Preserve cached art. */ }
-      // A namesake miss must never expose a previous artist's artwork.
-      return result ? publicResult(result) : valid ? publicResult(stored) : null
-    })().finally(() => pending.delete(key))
-    pending.set(key, job)
-  }
-  return pending.get(key)
-}
-
-async function artistMotionFor(artistId, artistName, titles, settings, { ffmpeg, cacheDir, directory } = {}) {
-  if (settings?.motion_covers === '0' || !ffmpeg || !cacheDir) return null
-  const row = memory.get(String(artistId)) || readCache(artistId, directory)
-  const known = new Set((Array.isArray(titles) ? titles : []).map(norm).filter(Boolean))
-  if (!acceptedCache(row, artistName, known)) return null
-  const url = safeURL(row?.motionURL, 'video')
-  if (!url) return null
-  const file = await cachedClip({ url, kind: /\.m3u8(?:[?#]|$)/i.test(url) ? 'hls' : 'mp4' }, {
-    cacheDir, ffmpeg, highResolution: settings?.high_resolution_motion_covers === '1'
-  })
-  return file ? { file, source: 'apple' } : null
-}
-
-module.exports = { parseVisuals, safeURL, acceptedCache, artistVisualsFor, artistMotionFor }
