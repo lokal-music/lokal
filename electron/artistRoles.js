@@ -111,6 +111,7 @@ module.exports = {
   GENERIC_ALBUM_ARTISTS,
   normalizeArtistName,
   isGenericAlbumArtist,
+  keepCommaSetFromDb,
   mainArtistNames,
   mainOnlyArtistIds,
   isMainArtistRelease,
