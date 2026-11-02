@@ -2,13 +2,26 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 const require = createRequire(import.meta.url)
-const Database = require('better-sqlite3')
 const { LinkStore, hash } = require('../electron/link/store')
 const { trackKey } = require('../electron/link/protocol')
 
 function setup() {
-  const db = new Database(':memory:')
+  const db = new DatabaseSync(':memory:')
+  // The production connection uses better-sqlite3; the built-in SQLite test
+  // fixture provides its transaction helper without requiring native builds.
+  db.transaction = fn => (...args) => {
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const result = fn(...args)
+      db.exec('COMMIT')
+      return result
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
+    }
+  }
   db.exec(`
     CREATE TABLE playlists (id TEXT PRIMARY KEY, uuid TEXT);
     CREATE TABLE tracks (
