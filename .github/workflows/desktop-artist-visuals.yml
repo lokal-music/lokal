@@ -39,6 +39,15 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts
+      - name: Diagnose parser and cache regressions
+        continue-on-error: true
+        run: node --test --test-name-pattern='Apple artist editorial|malformed JSON|a cached namesake|verified logo' scripts/artist-visuals.test.mjs
+      - name: Diagnose redirect and video-only regressions
+        continue-on-error: true
+        run: node --test --test-name-pattern='Apple artist page redirects|artist video works' scripts/artist-visuals.test.mjs
+      - name: Diagnose uncommon-title and canonical URL regressions
+        continue-on-error: true
+        run: node --test --test-name-pattern='uncommon local tracks|a generic artist URL' scripts/artist-visuals.test.mjs
       - name: Verify editorial parsing, identity, cache and persistence
         run: npm run test:artist-visuals
       - name: Verify moving cover compatibility
