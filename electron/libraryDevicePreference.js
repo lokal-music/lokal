@@ -33,13 +33,32 @@ function desktopPreferredLibraryClause() {
     // Album-artist identifies the owner when a track credits multiple guests.
     // Preserve the full track artist in storage; choose the owner only for
     // matching equivalent phone/desktop rows.
-    'AND ' + leadArtist("COALESCE(NULLIF(TRIM(desktop.album_artist), ''), desktop.artist)") +
-      ' = ' + leadArtist("COALESCE(NULLIF(TRIM(tracks.album_artist), ''), tracks.artist)"),
-    // Primary credits must also be compatible. Matching album_artist alone
-    // would incorrectly suppress unrelated tracks on Various Artists records.
-    'AND (' + leadArtist('desktop.artist') + ' = ' + leadArtist('tracks.artist') +
+    // A FLAC can have ARTIST=SZA and ARTIST=Kendrick Lamar as separate
+    // Vorbis values. Android may expose only the featured credit while
+    // desktop uses SZA (the album owner). Accept this special case only when
+    // the *title explicitly names the phone artist* as a collaborator,
+    // both albums are specified and equal, and the duration is within 1s.
+    // Do not infer identity from album ownership alone.
+    "AND ((" +
+    leadArtist("COALESCE(NULLIF(TRIM(desktop.album_artist), ''), desktop.artist)") +
+      ' = ' + leadArtist("COALESCE(NULLIF(TRIM(tracks.album_artist), ''), tracks.artist)") +
+    ' AND (' + leadArtist('desktop.artist') + ' = ' + leadArtist('tracks.artist') +
       ' OR (' + creditsArtist('desktop.artist', 'desktop.album_artist') +
-      ' AND ' + creditsArtist('tracks.artist', 'tracks.album_artist') + '))',
+      ' AND ' + creditsArtist('tracks.artist', 'tracks.album_artist') + ')))' +
+    ' OR (' +
+      "LOWER(TRIM(COALESCE(desktop.album_artist, ''))) = LOWER(TRIM(desktop.artist))" +
+      " AND TRIM(COALESCE(desktop.album_artist, '')) <> ''" +
+      " AND TRIM(COALESCE(desktop.album, '')) <> ''" +
+      " AND LOWER(TRIM(desktop.album)) = LOWER(TRIM(tracks.album))" +
+      " AND ABS(desktop.duration - tracks.duration) <= 1" +
+      " AND TRIM(COALESCE(tracks.artist, '')) <> ''" +
+      " AND TRIM(tracks.artist) NOT LIKE '%,%'" +
+      " AND TRIM(tracks.artist) NOT LIKE '%;%' " +
+      "AND (INSTR(LOWER(desktop.title), '(with ' || LOWER(TRIM(tracks.artist)) || ')') > 0 " +
+      " OR INSTR(LOWER(desktop.title), '(feat. ' || LOWER(TRIM(tracks.artist)) || ')') > 0 " +
+      " OR INSTR(LOWER(desktop.title), '(ft. ' || LOWER(TRIM(tracks.artist)) || ')') > 0 " +
+      " OR INSTR(LOWER(desktop.title), '(featuring ' || LOWER(TRIM(tracks.artist)) || ')') > 0)" +
+    '))',
     "AND (TRIM(COALESCE(desktop.album, '')) = ''",
     "OR TRIM(COALESCE(tracks.album, '')) = ''",
     "OR LOWER(TRIM(desktop.album)) = LOWER(TRIM(tracks.album)))",
