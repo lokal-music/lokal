@@ -1,5 +1,7 @@
 const { randomBytes, randomUUID, createHash, timingSafeEqual } = require('crypto')
 const { MAX_BATCH, text, trackKey, nextClock, compareStamp } = require('./protocol')
+const { splitArtists } = require('../artistSplit')
+const { keepCommaSetFromDb } = require('../artistRoles')
 const hash = token => createHash('sha256').update(String(token)).digest('hex')
 const safeEqual = (a, b) => { const aa = Buffer.from(String(a)), bb = Buffer.from(String(b)); return aa.length === bb.length && timingSafeEqual(aa, bb) }
 
@@ -82,16 +84,32 @@ class LinkStore {
     if (!title || !artist || !Number.isFinite(duration)) return null
     const exact = this.db.prepare("SELECT * FROM tracks WHERE link_normalize(title)=? AND link_normalize(artist)=? AND abs(COALESCE(duration,0)-?)<=2 ORDER BY CASE WHEN file_path LIKE 'ghost://%' THEN 1 ELSE 0 END, abs(COALESCE(duration,0)-?) LIMIT 1").get(title, artist, duration, duration)
     if (exact && !String(exact.file_path).startsWith('ghost://')) return exact
-    // Album-owner tags identify many collaborations differently between PC
-    // and phone. Restrict to the same title, album and duration so remixes and
-    // unrelated tracks aren't merged just because the release artist matches.
+    // Reordered collaboration credits can denote the same recording, but
+    // album ownership is NOT evidence that two different performances match:
+    // albums can contain several "Intro" tracks of nearly equal duration.
+    // Preserve the title, album, duration and non-ghost bounds, then compare
+    // the complete performer-credit sets, not just the shared album owner.
     const metadata = fields.track && typeof fields.track === 'object' ? fields.track : fields
     const owner = text(metadata.album_artist || metadata.albumArtist, 500)
     const album = text(metadata.album, 500)
     if (owner && album && title) {
-      const byOwner = this.db.prepare("SELECT * FROM tracks WHERE link_normalize(title)=? AND link_normalize(album)=? AND link_normalize(COALESCE(NULLIF(album_artist,''),artist))=? AND abs(COALESCE(duration,0)-?)<=2 AND file_path NOT LIKE 'ghost://%' ORDER BY abs(COALESCE(duration,0)-?) LIMIT 1")
-        .get(title, album.toLowerCase(), owner.toLowerCase(), duration, duration)
-      if (byOwner) return byOwner
+      const keepComma = keepCommaSetFromDb(this.db)
+      const credits = value => {
+        const names = splitArtists(value, keepComma)
+          .map(name => name.toLowerCase().replace(/\\s+/g, ' ').trim())
+          .filter(Boolean)
+        return names.length ? [...new Set(names)].sort().join('\\u0000') : ''
+      }
+      const sourceCredits = credits(artist) // The immutable history key.
+      const metadataCredits = credits(metadata.artist)
+      if (sourceCredits && (!metadataCredits || metadataCredits === sourceCredits)) {
+        const candidates = this.db.prepare("SELECT * FROM tracks WHERE link_normalize(title)=? AND link_normalize(album)=? AND link_normalize(COALESCE(NULLIF(album_artist,''),artist))=? AND abs(COALESCE(duration,0)-?)<=2 AND file_path NOT LIKE 'ghost://%' AND link_normalize(artist)<>'' ORDER BY abs(COALESCE(duration,0)-?)")
+          .all(title, album.toLowerCase(), owner.toLowerCase(), duration, duration)
+        const byOwner = candidates.filter(row => credits(row.artist) === sourceCredits)
+        // Two equally credited takes are still different possible recordings.
+        // Never choose the first local file in an ambiguous album group.
+        if (byOwner.length === 1) return byOwner[0]
+      }
     }
     return exact || alias || null
   }
