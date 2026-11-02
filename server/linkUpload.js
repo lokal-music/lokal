@@ -71,7 +71,12 @@ async function receivePhoneFile(req,res) {
     const picture=tags.picture?.[0]
     const artwork=picture?.data?.length
       ? await require('../electron/artwork/thumb').writeCover(path.join(getStorageDir(),'artwork'),trackId,picture.data,{overwrite:true})
-      : null
+      // The phone may have a separate folder cover instead of an embedded
+      // picture. Retain the authenticated history thumbnail when the ghost
+      // is promoted into an actual desktop file.
+      : ghost?.artwork_path && await fs.pathExists(ghost.artwork_path)
+        ? ghost.artwork_path
+        : null
     const stat=await fs.stat(destination)
     db.transaction(()=>{
     if(ghost)db.prepare('UPDATE tracks SET file_path=?,file_hash=?,duration=? WHERE id=?').run(destination,digest,parsed.format.duration,trackId)
