@@ -308,7 +308,7 @@ export default function OnlineArtist({ id, name: givenName, anchor = null, catal
         {image ? <img src={image} alt="" className="h-full w-full object-cover opacity-30 blur-sm" /> : <div className="h-full w-full bg-gradient-to-b from-accent/8 to-transparent" />}
         <div className="absolute inset-0 bg-gradient-to-t from-base via-base/20" />
         <div className="absolute bottom-5 left-8 right-8 flex items-end gap-5">
-          <button type="button" onClick={image ? () => setZoom(true) : undefined} disabled={!image} title={image ? t('View the picture') : undefined} className={`flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${image ? 'cursor-zoom-in' : 'cursor-default'}`}>
+          <button type="button" onClick={image ? () => setZoom(true) : undefined} disabled={!image} title={image ? t('View the picture') : undefined} className={`relative flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-elevated ${image ? 'cursor-zoom-in' : 'cursor-default'}`}>
             {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <Music size={36} className="text-muted" />}
             <ArtistMotionPortrait src={artistVisuals.motionSrc} />
           </button>
