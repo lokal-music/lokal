@@ -131,3 +131,54 @@ test('shared credited album owner allows differently ordered collaboration credi
   assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
   db.close()
 })
+
+test('Mornye FLAC split ARTIST values collapse phone upload in desktop All', () => {
+  // Actual file: ARTIST=SZA + ARTIST=Kendrick Lamar, ALBUMARTIST=SZA.
+  // Android can surface the second value; desktop keeps the album owner.
+  const { db, insert } = fixture()
+  insert('desktop', '30 For 30 (with Kendrick Lamar)', 'SZA',
+    'SOS Deluxe: LANA', 278.277, null, 'SZA')
+  insert('phone', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', 278, 'mobile')
+  assert.deepEqual(visible(db), ['desktop'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
+  db.close()
+})
+
+test('split-credit exception never hides different versions or unrelated artists', () => {
+  const { db, insert } = fixture()
+  insert('pc', '30 For 30 (with Kendrick Lamar)', 'SZA',
+    'SOS Deluxe: LANA', 278.277, null, 'SZA')
+  insert('remix', '30 For 30 (with Kendrick Lamar) [Remix]', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', 278, 'mobile')
+  insert('other-album', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'Other Album', 278, 'mobile')
+  insert('other-artist', '30 For 30 (with Kendrick Lamar)', 'Other Artist',
+    'SOS Deluxe: LANA', 278, 'mobile')
+  insert('other-master', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', 289, 'mobile')
+  assert.deepEqual(visible(db), [
+    'other-album', 'other-artist', 'other-master', 'pc', 'remix'
+  ])
+  db.close()
+})
+
+
+test('desktop local search suppresses phone duplicate before LIMIT', () => {
+  const { searchTracks } = require('../electron/librarySearch')
+  const db = new DatabaseSync(':memory:')
+  db.exec(`CREATE TABLE tracks (
+    id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT,
+    album_artist TEXT, duration REAL, download_source TEXT,
+    file_path TEXT, play_count INTEGER DEFAULT 0
+  )`)
+  const add = db.prepare(`INSERT INTO tracks (id,title,artist,album,album_artist,
+    duration,download_source,file_path) VALUES (?,?,?,?,?,?,?,?)`)
+  add.run('pc', '30 For 30 (with Kendrick Lamar)', 'SZA', 'SOS Deluxe: LANA',
+    'SZA', 278.277, null, '/library/song.flac')
+  add.run('mobile', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', null, 278, 'mobile', '/phone-downloads/song.flac')
+  const found = searchTracks(db, '30 for 30', 1)
+  assert.deepEqual(found.map(row => row.id), ['pc'])
+  db.close()
+})

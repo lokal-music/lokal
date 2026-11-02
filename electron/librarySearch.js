@@ -4,6 +4,7 @@
 // words and an artist word). Results where the whole query appears together
 // come first.
 
+const { desktopPreferredLibraryClause } = require('./libraryDevicePreference')
 const MAX_WORDS = 8
 
 /** "Fame is  for Fools" -> ['fame', 'is', 'for', 'fools'] */
@@ -47,7 +48,7 @@ function searchTracks(db, query, limit = 40) {
   const match = wordsMatch(query, TRACK_COLUMNS)
   if (!match) return []
   const order = phraseFirst(query, 'title', TRACK_COLUMNS)
-  return db.prepare(`SELECT * FROM tracks WHERE file_path NOT LIKE 'ghost://%' AND ${match.sql}
+  return db.prepare(`SELECT * FROM tracks WHERE file_path NOT LIKE 'ghost://%' AND ${desktopPreferredLibraryClause()} AND ${match.sql}
     ORDER BY ${order.sql}, IFNULL(play_count, 0) DESC, title COLLATE NOCASE LIMIT ?`).all(...match.params, ...order.params, limit)
 }
 
