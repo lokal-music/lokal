@@ -46,7 +46,7 @@ router.get('/', (req, res) => {
 router.get('/search', (req, res) => {
   const match = require('../../electron/librarySearch').wordsMatch(String(req.query.q || ''), ['album', 'album_artist', 'artist'])
   if (!match) return res.json([])
-  const rows = getDB().prepare(`${albumRowsQuery(`AND ${match.sql}`)} ORDER BY album ASC LIMIT 40`).all(...match.params)
+  const rows = getDB().prepare(`${albumRowsQuery(`AND COALESCE(download_source, '') <> 'mobile' AND ${match.sql}`)} ORDER BY album ASC LIMIT 40`).all(...match.params)
   res.json(enrichAlbumRows(rows))
 })
 
