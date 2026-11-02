@@ -74,6 +74,31 @@ export default function TrackEditModal({ track, open, onClose, onSave }) {
   const [status, setStatus] = useState(null)
   const [artworkPreview, setArtworkPreview] = useState(null)
   const [genreOptions, setGenreOptions] = useState([])
+  const [fileSizeBytes, setFileSizeBytes] = useState(null)
+
+  useEffect(() => {
+    if (!open || !track?.id || !api.isElectron) {
+      setFileSizeBytes(null)
+      return undefined
+    }
+    let active = true
+    const refresh = () => {
+      Promise.resolve(api.getTrackFileSize(track.id))
+        .then(result => {
+          if (active) {
+            const bytes = Number(result?.bytes)
+            setFileSizeBytes(Number.isSafeInteger(bytes) && bytes > 0 ? bytes : null)
+          }
+        })
+        .catch(() => { if (active) setFileSizeBytes(null) })
+    }
+    refresh()
+    window.addEventListener('lokal:refresh', refresh)
+    return () => {
+      active = false
+      window.removeEventListener('lokal:refresh', refresh)
+    }
+  }, [open, track?.id])
 
   useEffect(() => {
     if (!open) return
@@ -331,6 +356,15 @@ export default function TrackEditModal({ track, open, onClose, onSave }) {
             className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-accent/50"
             placeholder={t("Album artist (if different)")}
           />
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/50 px-3 py-2 text-xs">
+          <span className="text-muted">{t('File size')}</span>
+          <span className="text-white" data-testid="track-edit-file-size">
+            {fileSizeBytes != null
+              ? `${(fileSizeBytes / 1000000).toFixed(2)} MB`
+              : t('Unknown')}
+          </span>
         </div>
 
         <div className="grid grid-cols-3 gap-3">
