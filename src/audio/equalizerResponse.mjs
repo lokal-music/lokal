@@ -81,3 +81,13 @@ export function equalizerResponseDb(stateInput,frequenciesHz,sampleRate=48000) {
   const stages=all.filter(b=>b.enabled).map(b=>coefficients(b.type,b.frequencyHz,b.gainDb,b.q,sampleRate))
   return frequenciesHz.map(hz=>s.preampDb+stages.reduce((total,c)=>total+responseDb(c,hz,sampleRate),0))
 }
+
+// Estimate the summed response (rather than the maximum individual boost).
+// Calculated when the EQ changes, never on the audio rendering callback.
+const HEADROOM_FREQUENCIES=Array.from({length:192},(_,i)=>20*Math.pow(1000,i/191))
+export function estimateEqHeadroomDb(stateInput,sampleRate=48000) {
+  const state=normalizeEqState(stateInput)
+  if(!state.enabled || !state.autoHeadroom) return 0
+  const peak=Math.max(0,...equalizerResponseDb(state,HEADROOM_FREQUENCIES,sampleRate))
+  return peak>0 ? peak+0.8 : 0
+}
