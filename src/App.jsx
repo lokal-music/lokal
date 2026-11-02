@@ -185,8 +185,8 @@ function pushLastfmStatus(entry) {
 }
 
 function eqPlaybackRate() {
-  const state = loadEqState()
-  return playbackSpeed() * (state.enabled && state.fx.enabled ? state.fx.tempo : 1)
+  // Playback rate comes solely from the precise external speed control.
+  return playbackSpeed()
 }
 
 function KeyboardShortcuts() {
@@ -683,8 +683,7 @@ export default function App() {
   // beat-matched rate alone until its normal glide at the end of the transition.
   useEffect(() => {
     const apply = speed => {
-      const state = loadEqState()
-      const rate = speed * (state.enabled && state.fx.enabled ? state.fx.tempo : 1)
+      const rate = speed
       for (const el of [audioRef.current, cfAudioRef.current]) {
         if (!el) continue
         try {
@@ -701,9 +700,7 @@ export default function App() {
     const unsubscribe = usePlaybackSpeed.subscribe((state, previous) => {
       if (state.speed !== previous.speed) apply(state.speed)
     })
-    const onEqChanged = () => apply(playbackSpeed())
-    window.addEventListener('lokal:eq-changed', onEqChanged)
-    return () => { unsubscribe(); window.removeEventListener('lokal:eq-changed', onEqChanged) }
+    return () => { unsubscribe() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const audioSourcesInitializedRef = useRef(false)
   const playSecsRef = useRef(0)
