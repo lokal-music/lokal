@@ -24,6 +24,7 @@
     "test:motion-covers": "node --test scripts/motion-cover-resolution.test.mjs",
     "test:artwork-download": "node --test scripts/artwork-download.test.mjs",
     "test:artist-roles": "node --test scripts/artist-roles.test.mjs",
+    "test:artist-visuals": "node --test scripts/artist-visuals.test.mjs",
     "test:gapless": "node --test scripts/gapless-playback.test.mjs",
     "test:network-shares": "node --test scripts/network-share-paths.test.mjs scripts/network-library-scan.test.mjs scripts/network-artwork.test.mjs",
     "test:resolution-tags": "node --test scripts/full-resolution-quality-tags.test.mjs",
