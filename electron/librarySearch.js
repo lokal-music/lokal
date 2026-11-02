@@ -58,8 +58,10 @@ function searchTracks(db, query, limit = 40) {
 function searchArtists(db, query, tracks = [], limit = 5) {
   const words = searchWords(query)
   if (!words.length) return []
-  const byName = db.prepare(`SELECT a.*, COUNT(atl.track_id) as track_count FROM artists a JOIN artist_track_links atl ON atl.artist_id = a.id
-    WHERE a.name LIKE ? ESCAPE '\\' AND EXISTS (SELECT 1 FROM artist_track_links ax JOIN tracks tx ON tx.id = ax.track_id WHERE ax.artist_id = a.id AND COALESCE(tx.download_source, '') <> 'mobile' AND tx.file_path NOT LIKE 'ghost://%') GROUP BY a.id LIMIT ?`).all(likeText(String(query).trim()), limit)
+  const byName = db.prepare(`SELECT a.*, COUNT(atl.track_id) as track_count FROM artists a
+    JOIN artist_track_links atl ON atl.artist_id = a.id
+    JOIN tracks tx ON tx.id = atl.track_id AND COALESCE(tx.download_source, '') <> 'mobile' AND tx.file_path NOT LIKE 'ghost://%'
+    WHERE a.name LIKE ? ESCAPE '\\' GROUP BY a.id LIMIT ?`).all(likeText(String(query).trim()), limit)
   const ids = tracks.map(track => track.id).slice(0, 40)
   // Short words ("is", "of") are in too many names to say anything.
   const named = words.filter(word => word.length >= 3)
