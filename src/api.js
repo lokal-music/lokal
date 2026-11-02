@@ -288,8 +288,8 @@ export const api = {
       ? { ...v, logoSrc: 'file://' + v.logoFile.replace(/\\\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/%3A/g, ':') }
       : v)
     : Promise.resolve(null),
-  artistMotion: (id) => isE() && el()?.artistMotion
-    ? el().artistMotion(id).then(v => v?.file
+  artistMotion: (id, name, titles) => isE() && el()?.artistMotion
+    ? el().artistMotion(id, name, titles).then(v => v?.file
       ? { src: 'file://' + v.file.replace(/\\\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/%3A/g, ':') }
       : null)
     : Promise.resolve(null),
