@@ -8,6 +8,7 @@
 // Done once here rather than inside each parser so every source reads the same.
 
 const { joinUnits, round3, lineEnd, hasKnownEnd } = require('./model')
+const { stripVoicePrefix } = require('./lrc')
 
 /** Shorter silences aren't worth interrupting the flow of the lyrics for. */
 const MIN_GAP_SECONDS = 4
@@ -224,7 +225,8 @@ function readEmptyStamps(raw) {
 function finish(rawLines, { source, doc = null, isrc = null, language = null, title = null, artist = null } = {}) {
   let lines = readEmptyStamps(rawLines)
     .filter(l => l && (l.gap || l.text || l.bgText))
-    .map(l => ({ ...l, text: String(l.text || '').trim() }))
+    // Normalize even TTML/private-tag/provider lyrics that bypass LRC parsers.
+    .map(l => stripVoicePrefix({ ...l, text: String(l.text || '').trim() }))
   lines = dropCredits(lines, { title, artist })
   const sync = classify(lines)
   if (sync === 'none') {
