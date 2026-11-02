@@ -35,6 +35,7 @@ const COVER_SIZE = 'min(60rem, 78vh, calc(100vw - 8rem), calc(110vh - 25rem))'
 // 6rem accounts for the cover stage's horizontal padding (px-12).
 const COVER_SIZE_WITH_PANEL = 'min(60rem, 78vh, calc(100vw - 8rem), calc(110vh - 25rem), calc(100vw - min(42vw, 780px) - 6rem))'
 const PANEL_WIDTH = 'min(42vw, 780px)'
+const PANEL_ANIMATION_MS = 360 // transform-only so lyric text isn't reflowed every frame
 const FULLSCREEN_LYRICS_WAIT_MS = 1500 // lyrics found after this don't open the panel on their own
 // The header and the cover's controls hide (and the cursor too) after this
 // long without the mouse moving.
@@ -318,6 +319,7 @@ export default function FullscreenPlayer() {
   // never even got a chance to render its own "no lyrics found" + search
   // state, exactly like it already does in windowed mode).
   const [fullscreenPanel, setFullscreenPanel] = useState('none')
+  const isPanelVisible = Boolean(currentTrack && fullscreenPanel !== 'none')
   const prevTrackId = useRef(null)
   // Full-screen lyrics is this same overlay in another layout (see
   // LyricsFullscreen): it's open when either view is, and the player's own
@@ -351,7 +353,11 @@ export default function FullscreenPlayer() {
   const animationRunning = showFullscreen && !lyricsMode && isPlaying && !windowHidden
   const playerLayerRef = useRef(null)
   const coverRef = useRef(null)
+  const coverMotionRef = useRef(null)
   const coverStageRef = useRef(null)
+  const previousPanelLayoutRef = useRef(null)
+  const panelStageAnimationRef = useRef(null)
+  const panelCoverAnimationRef = useRef(null)
   const lyricsPanelRef = useRef(null)
   const [lyricsLeftExpansion, setLyricsLeftExpansion] = useState(0)
 
@@ -367,21 +373,23 @@ export default function FullscreenPlayer() {
       return undefined
     }
     const stage = coverStageRef.current
-    const cover = coverRef.current
+    const cover = coverMotionRef.current
     const panel = lyricsPanelRef.current
-    if (!stage || !cover || !panel) return undefined
+    const layer = playerLayerRef.current
+    if (!stage || !cover || !panel || !layer) return undefined
 
     const measure = () => {
-      // offsetLeft/offsetWidth ignore the cover's entrance and pointer-tilt
-      // transforms; its bounding rect would otherwise make the text jitter.
-      const coverRight = stage.getBoundingClientRect().left + cover.offsetLeft + cover.offsetWidth
+      // Use layout offsets, never animated getBoundingClientRect() values.
+      // Neither the cover's GPU scale nor the panel slide affects this gap.
+      const layerLeft = layer.getBoundingClientRect().left
+      const coverRight = layerLeft + stage.offsetLeft + cover.offsetLeft + cover.offsetWidth
       const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16
       const lyricRow = panel.querySelector('[data-lyrics-auto-follow] [data-row] > div')
       const rowPadding = lyricRow && Number.parseFloat(window.getComputedStyle(lyricRow).paddingLeft)
       // LyricsPanel uses px-6 (1.5rem); the rows add their own inset.
       const textInset = rootFontSize * 1.5 + (Number.isFinite(rowPadding) ? rowPadding : rootFontSize * 0.83)
       const next = computeFullscreenLyricsExpansion({
-        panelLeft: panel.getBoundingClientRect().left,
+        panelLeft: layerLeft + panel.offsetLeft,
         coverRight,
         textInset,
       })
@@ -402,6 +410,54 @@ export default function FullscreenPlayer() {
       if (frame) window.cancelAnimationFrame(frame)
     }
   }, [showFullscreen, fullscreenPanel, currentTrack?.id])
+  // FLIP: the new panel width and artwork size are laid out once, before paint.
+  // Only the stage's translation and artwork wrapper's scale are then animated.
+  // Animating the old width/height/transition-all forced Chromium to rewrap
+  // every lyric line (including its word spans) throughout the 500ms animation.
+  useLayoutEffect(() => {
+    const stage = coverStageRef.current
+    const cover = coverMotionRef.current
+    if (!showFullscreen || lyricsMode || !stage) {
+      previousPanelLayoutRef.current = null
+      return
+    }
+    const stageBox = stage.getBoundingClientRect()
+    const coverBox = cover?.getBoundingClientRect()
+    const previous = previousPanelLayoutRef.current
+    previousPanelLayoutRef.current = { stageBox, coverBox }
+    panelStageAnimationRef.current?.cancel()
+    panelCoverAnimationRef.current?.cancel()
+    if (!previous || reduceMotion) return
+
+    const previousCenter = previous.stageBox.left + previous.stageBox.width / 2
+    const currentCenter = stageBox.left + stageBox.width / 2
+    const distance = previousCenter - currentCenter
+    const options = {
+      duration: PANEL_ANIMATION_MS,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    }
+    if (Math.abs(distance) > 1) {
+      panelStageAnimationRef.current = stage.animate([
+        { transform: `translate3d(${distance}px, 0, 0)` },
+        { transform: 'translate3d(0, 0, 0)' },
+      ], options)
+    }
+    if (cover && previous.coverBox && coverBox?.width > 0) {
+      const scale = previous.coverBox.width / coverBox.width
+      if (Number.isFinite(scale) && Math.abs(scale - 1) > 0.005) {
+        panelCoverAnimationRef.current = cover.animate([
+          { transform: `scale(${scale})` },
+          { transform: 'scale(1)' },
+        ], options)
+      }
+    }
+  }, [showFullscreen, isPanelVisible, lyricsMode, reduceMotion])
+
+  useEffect(() => () => {
+    panelStageAnimationRef.current?.cancel()
+    panelCoverAnimationRef.current?.cancel()
+  }, [])
+
   useEffect(() => {
     if (playerLayerRef.current) playerLayerRef.current.inert = lyricsMode
   }, [lyricsMode, open])
@@ -740,7 +796,6 @@ export default function FullscreenPlayer() {
   }
 
   const isAutoSynced = settings.unsynced_auto_sync === '1'
-  const isPanelVisible = currentTrack && fullscreenPanel !== 'none'
   const coverSize = isPanelVisible ? COVER_SIZE_WITH_PANEL : COVER_SIZE
   const fullscreenQualityTier = currentTrack
     ? (isSuspect(currentTrack) ? 'suspect' : tierOf(currentTrack))
@@ -750,16 +805,9 @@ export default function FullscreenPlayer() {
     : null
   const showFullscreenQuality = !!fullscreenQualityLabel &&
     !(fullscreenQualityTier === 'unknown' && fullscreenQualityLabel === 'Not read')
-  // The two layout-affecting transitions below (main content re-centering,
-  // panel width collapsing) only need to animate while this view is
-  // actually staying open -- while it's closing, the whole overlay is
-  // already fading to invisible over its own 300ms exit transition, so
-  // nobody sees these settle anyway. Snapping them instantly on close
-  // avoids running three overlapping layout/paint transitions (this pair
-  // plus the overlay's own fade) at the exact moment a wide subtree
-  // (Queue/Lyrics) unmounts, which on Windows has been enough to leave the
-  // frameless window's native hit-test map stale -- see toggleFullscreen
-  // in store/player.js and window:refreshHitRegions in electron/main.js.
+  // The side panel keeps its full width even when hidden. Its contents can be
+  // laid out at their final width; opening it never animates layout dimensions.
+  // The fullscreen overlay still owns its existing exit animation.
 
   return (
     <AnimatePresence>
@@ -888,7 +936,8 @@ export default function FullscreenPlayer() {
           {/* The cover, with the controls over it (shown while the pointer is
               on it), then the progress, the title and the artist. Clear of
               the header, so a tall canvas doesn't run into "Playing from". */}
-          <div ref={coverStageRef} className={`relative z-10 flex flex-col items-center ${turntableMode ? 'justify-end' : 'justify-center'} flex-1 min-w-0 px-12 pt-24 pb-12 ${showFullscreen ? 'transition-all duration-500' : ''}`}>
+          <div ref={coverStageRef} className={`relative z-10 flex flex-col items-center ${turntableMode ? 'justify-end' : 'justify-center'} flex-1 min-w-0 px-12 pt-24 pb-12`}
+            style={{ marginRight: isPanelVisible ? PANEL_WIDTH : 0 }}>
             {/* Keep the tag outside the artwork, directly above the cover.
                 This zero-height anchor never shifts the cover, title, or seek
                 bar when the tag is hidden (or when tracks change). In
@@ -911,7 +960,7 @@ export default function FullscreenPlayer() {
             {/* One card for every song (never swapped, so never waiting on an
                 exit while the window is minimized): the artwork changes inside
                 it (MixCovers: AutoMix's cloudy dissolve, else a short fade). */}
-              {!turntableMode && <motion.div
+              {!turntableMode && <div ref={coverMotionRef} className="relative flex-shrink-0" style={{ width: coverSize, height: coverSize }}><motion.div
                 ref={coverRef}
                 initial={{ opacity: 0, scale: 0.92, y: 16 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -922,7 +971,7 @@ export default function FullscreenPlayer() {
                 onDoubleClick={doubleClickLike}
                 className={"fullscreen-cover-stage group/cover relative select-none overflow-hidden flex-shrink-0 flex items-center justify-center " + (spinCd ? "rounded-full border border-transparent bg-transparent shadow-none" : "rounded-2xl shadow-[0_32px_80px_rgba(0,0,0,0.8)] border border-white/10 bg-white/5")}
                 // Keep the artwork box square, including for a 9:16 Spotify Canvas.
-                style={{ width: coverSize, height: coverSize }}
+                style={{ width: '100%', height: '100%' }}
               >
                 <div className={spinCd ? "absolute inset-0 fullscreen-cd-disc" : "absolute inset-0"}
                   style={spinCd ? { animationPlayState: animationRunning ? "running" : "paused" } : undefined}>
@@ -995,7 +1044,7 @@ export default function FullscreenPlayer() {
                   </div>
                 )}
                 {burst && burst.trackId === currentTrack?.id && <LikeBurst key={burst.id} kind={burst.kind} />}
-              </motion.div>}
+              </motion.div></div>}
 
             {turntableMode && currentTrack && (
               <div className={`relative z-10 flex items-center justify-center gap-5 rounded-full border border-white/15 bg-black/50 px-7 py-4 shadow-2xl backdrop-blur-md transition-opacity duration-300 ${chromeHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
@@ -1041,8 +1090,13 @@ export default function FullscreenPlayer() {
               // "no lyrics" state and search, same as windowed mode.
               <div
                 ref={lyricsPanelRef}
-                className={`relative z-10 flex flex-col ${isPanelVisible && fullscreenPanel === 'lyrics' ? 'overflow-visible' : 'overflow-hidden'} pt-24 pb-10 ${showFullscreen ? 'transition-all duration-500' : ''} ${isPanelVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                style={{ width: isPanelVisible ? PANEL_WIDTH : '0px' }}
+                className={`absolute inset-y-0 right-0 z-10 flex flex-col ${isPanelVisible && fullscreenPanel === 'lyrics' ? 'overflow-visible' : 'overflow-hidden'} pt-24 pb-10 ${isPanelVisible ? '' : 'pointer-events-none'}`}
+                style={{
+                  width: PANEL_WIDTH,
+                  opacity: isPanelVisible ? 1 : 0,
+                  transform: isPanelVisible ? 'translate3d(0, 0, 0)' : 'translate3d(48px, 0, 0)',
+                  transition: reduceMotion ? 'none' : `opacity ${PANEL_ANIMATION_MS}ms ease, transform ${PANEL_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                }}
               >
                 {(fullscreenPanel !== 'none' ? fullscreenPanel : lastPanelRef.current) === 'queue' ? (
                   <QueueContent variant="fullscreen" />
