@@ -275,6 +275,7 @@ router.post('/history/artwork', async (req, res) => {
     )
     db.prepare("UPDATE tracks SET artwork_path=?,download_source='mobile' WHERE id=? AND file_path LIKE 'ghost://link/%'")
       .run(artwork,id)
+    require('../../electron/ipc/remote').events.emit('library', { type: 'mobile-history-artwork' })
     return res.set('Cache-Control', 'private, no-store').json({ ok: true })
   } catch (error) {
     return res.status(500).json({ error: 'Could not save mobile artwork.' })
@@ -320,6 +321,7 @@ router.post('/files/:trackId/artwork', async (req, res) => {
     )
     db.prepare("UPDATE tracks SET artwork_path=? WHERE id=? AND download_source='mobile' AND (artwork_path IS NULL OR artwork_path='')")
       .run(artwork, trackId)
+    require('../../electron/ipc/remote').events.emit('library', { type: 'mobile-copy-artwork' })
     return res.set('Cache-Control', 'private, no-store').json({ ok: true })
   } catch {
     return res.status(500).json({ error: 'Could not save copied-phone artwork.' })
