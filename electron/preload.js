@@ -143,7 +143,7 @@ contextBridge.exposeInMainWorld('electron', {
   artistSetImage: (id, d) => invoke('artist:setImage', id, d),
   artistSetImageUrl: (id, url) => invoke('artist:setImageUrl', id, url),
   artistRefreshMetadata: (id, opts) => invoke('artist:refreshMetadata', id, opts),
-  artistVisuals: (id, name, titles) => invoke('artwork:artistVisuals', id, name, titles),
+  artistVisuals: (id, name, titles, force = false) => invoke('artwork:artistVisuals', id, name, titles, force),
   artistMotion: (id) => invoke('artwork:artistMotion', id),
   artistsRefreshAllMetadata: (opts) => invoke('artists:refreshAllMetadata', opts),
   artistsRefreshAllStatus: () => invoke('artists:refreshAllStatus'),
