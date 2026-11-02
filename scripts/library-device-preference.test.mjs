@@ -163,3 +163,22 @@ test('split-credit exception never hides different versions or unrelated artists
   db.close()
 })
 
+
+test('desktop local search suppresses phone duplicate before LIMIT', () => {
+  const { searchTracks } = require('../electron/librarySearch')
+  const db = new DatabaseSync(':memory:')
+  db.exec(`CREATE TABLE tracks (
+    id TEXT PRIMARY KEY, title TEXT, artist TEXT, album TEXT,
+    album_artist TEXT, duration REAL, download_source TEXT,
+    file_path TEXT, play_count INTEGER DEFAULT 0
+  )`)
+  const add = db.prepare(`INSERT INTO tracks (id,title,artist,album,album_artist,
+    duration,download_source,file_path) VALUES (?,?,?,?,?,?,?,?)`)
+  add.run('pc', '30 For 30 (with Kendrick Lamar)', 'SZA', 'SOS Deluxe: LANA',
+    'SZA', 278.277, null, '/library/song.flac')
+  add.run('mobile', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', null, 278, 'mobile', '/phone-downloads/song.flac')
+  const found = searchTracks(db, '30 for 30', 1)
+  assert.deepEqual(found.map(row => row.id), ['pc'])
+  db.close()
+})
