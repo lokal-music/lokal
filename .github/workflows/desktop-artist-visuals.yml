@@ -28,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   artist-visuals:
@@ -58,3 +59,15 @@ jobs:
         run: |
           npm run gen:icons
           npx vite build
+      - name: Attach failing test detail to PR for diagnosis
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm run test:artist-visuals > "${RUNNER_TEMP}/artist-output.log" 2>&1 || true
+          {
+            printf 'Temporary diagnostic from artist-visuals CI:\n\n```text\n'
+            tail -n 100 "${RUNNER_TEMP}/artist-output.log" | head -c 6000
+            printf '\n```\n'
+          } > "${RUNNER_TEMP}/artist-comment.md"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "${RUNNER_TEMP}/artist-comment.md"
