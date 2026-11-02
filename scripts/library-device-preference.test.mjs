@@ -131,3 +131,35 @@ test('shared credited album owner allows differently ordered collaboration credi
   assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
   db.close()
 })
+
+test('Mornye FLAC split ARTIST values collapse phone upload in desktop All', () => {
+  // Actual file: ARTIST=SZA + ARTIST=Kendrick Lamar, ALBUMARTIST=SZA.
+  // Android can surface the second value; desktop keeps the album owner.
+  const { db, insert } = fixture()
+  insert('desktop', '30 For 30 (with Kendrick Lamar)', 'SZA',
+    'SOS Deluxe: LANA', 278.277, null, 'SZA')
+  insert('phone', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', 278, 'mobile')
+  assert.deepEqual(visible(db), ['desktop'])
+  assert.deepEqual(visible(db, { source: 'mobile' }), ['phone'])
+  db.close()
+})
+
+test('split-credit exception never hides different versions or unrelated artists', () => {
+  const { db, insert } = fixture()
+  insert('pc', '30 For 30 (with Kendrick Lamar)', 'SZA',
+    'SOS Deluxe: LANA', 278.277, null, 'SZA')
+  insert('remix', '30 For 30 (with Kendrick Lamar) [Remix]', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', 278, 'mobile')
+  insert('other-album', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'Other Album', 278, 'mobile')
+  insert('other-artist', '30 For 30 (with Kendrick Lamar)', 'Other Artist',
+    'SOS Deluxe: LANA', 278, 'mobile')
+  insert('other-master', '30 For 30 (with Kendrick Lamar)', 'Kendrick Lamar',
+    'SOS Deluxe: LANA', 289, 'mobile')
+  assert.deepEqual(visible(db), [
+    'other-album', 'other-artist', 'other-master', 'pc', 'remix'
+  ])
+  db.close()
+})
+
