@@ -64,19 +64,52 @@ function parseVisuals(html) {
   return { logoURL, logoAspect: sourceWidth && sourceHeight ? Math.min(6, Math.max(.4, sourceWidth / sourceHeight)) : 1, motionURL }
 }
 
-async function boundedFetch(url, { fetchImpl = fetch, timeoutMs = 12000, maxBytes = 8 * 1024 * 1024 } = {}) {
+// Apple Music redirects generic /artist/-/ID URLs to the canonical slug.
+// Follow only a small number of verified HTTPS Apple/CDN redirects. Automatic
+// fetch redirects are deliberately disabled to avoid leaking local requests
+// to arbitrary redirect destinations.
+async function boundedFetch(url, {
+  fetchImpl = fetch, timeoutMs = 12000, maxBytes = 8 * 1024 * 1024, kind = 'page'
+} = {}) {
+  let current = safeURL(String(url), kind)
+  if (!current) return null
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetchImpl(url, { headers: { 'User-Agent': UA }, signal: controller.signal, redirect: 'error' })
-    if (!response.ok || Number(response.headers?.get?.('content-length') || 0) > maxBytes) return null
-    const bytes = Buffer.from(await response.arrayBuffer())
-    return bytes.length <= maxBytes ? bytes : null
+    for (let hop = 0; hop <= 3; hop++) {
+      const response = await fetchImpl(current, {
+        headers: { 'User-Agent': UA }, signal: controller.signal, redirect: 'manual'
+      })
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers?.get?.('location')
+        current = location && safeURL(new URL(location, current).href, kind)
+        if (!current) return null
+        continue
+      }
+      if (!response.ok || Number(response.headers?.get?.('content-length') || 0) > maxBytes) return null
+      // Cap actual received bytes, not just the advertised Content-Length.
+      if (!response.body?.getReader) {
+        const bytes = Buffer.from(await response.arrayBuffer())
+        return bytes.length <= maxBytes ? bytes : null
+      }
+      const reader = response.body.getReader()
+      const chunks = []
+      let size = 0
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > maxBytes) { await reader.cancel().catch(() => {}); return null }
+        chunks.push(Buffer.from(value))
+      }
+      return Buffer.concat(chunks, size)
+    }
+    return null
   } finally { clearTimeout(timer) }
 }
 
 async function appleJson(url, options) {
-  const bytes = await boundedFetch(url, { ...options, maxBytes: 3 * 1024 * 1024 })
+  const bytes = await boundedFetch(url, { ...options, kind: 'page', maxBytes: 3 * 1024 * 1024 })
   if (!bytes) return null
   try { return JSON.parse(bytes.toString('utf8')) } catch { return null }
 }
@@ -107,7 +140,7 @@ function publicResult(record) {
 
 async function saveLogo(url, artistId, directory, options) {
   if (!safeURL(url, 'logo')) return null
-  const buffer = await boundedFetch(url, options)
+  const buffer = await boundedFetch(url, { ...options, kind: 'logo' })
   if (!buffer || buffer.length < 8 ||
       !buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return null
   const folder = path.join(directory, 'logos')
@@ -148,12 +181,105 @@ async function lookupApple(artistName, knownTitles, { fetchImpl, directory }) {
         if (item.wrapperType === 'collection' && knownTitles.has(title) && !proof.includes(title)) proof.push(title)
       }
     }
+    // Some libraries contain only obscure tracks which are absent from
+    // Apple's 25 most-popular songs and top 100 albums. Verify a bounded
+    // sample of those titles against the exact Apple artist ID.
+    if (!proof.length) {
+      for (const title of [...knownTitles].slice(0, 4)) {
+        const tracks = await appleJson('https://itunes.apple.com/search?' + new URLSearchParams({
+          term: artistName + ' ' + title, media: 'music', entity: 'song', limit: '30', country: 'us'
+        }), opts)
+        if ((tracks?.results || []).some(song =>
+          String(song.artistId) === String(candidate.artistId) &&
+          norm(song.artistName) === norm(artistName) &&
+          norm(song.trackName) === title)) {
+          proof.push(title)
+          break
+        }
+      }
+    }
     if (!proof.length) continue
-    const page = safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
-    const html = await boundedFetch(page, { fetchImpl, maxBytes: 6 * 1024 * 1024 })
-    if (!html) return null
+
+    // The public iTunes artist result already supplies the real slug URL.
+    // The old /artist/-/ID fallback redirected, but the old HTTP client
+    // rejected redirects entirely, preventing the page from loading.
+    const canonical = safeURL(candidate.artistLinkUrl)
+    const artistIdPattern = new RegExp('/' + String(candidate.artistId) + '/?
+    const logoFile = visuals.logoURL
+      ? await saveLogo(visuals.logoURL, candidate.artistId, directory, opts).catch(() => null)
+      : null
+    return {
+      artistId: '', name: artistName, proof, 
+      logoFile, logoAspect: visuals.logoAspect, motionURL: visuals.motionURL,
+      fetchedAt: Date.now()
+    }
+  }
+  return null
+}
+
+async function artistVisualsFor(artistId, artistName, titles, options = {}) {
+  const name = String(artistName || '').trim()
+  const known = new Set((Array.isArray(titles) ? titles : []).map(norm).filter(Boolean))
+  if (!artistId || !name || !known.size) return null
+  const directory = options.directory || path.join(getStorageDir(), 'artist-editorial')
+  const key = String(artistId)
+  const stored = memory.get(key) || readCache(key, directory)
+  const valid = acceptedCache(stored, name, known)
+  if (!options.force && valid && Date.now() - stored.fetchedAt < (stored.logoFile || stored.motionURL ? HIT_TTL : MISS_TTL)) {
+    return publicResult(stored)
+  }
+  if (!pending.has(key)) {
+    const job = (async () => {
+      let result = null
+      try {
+        result = await lookupApple(name, known, { ...options, directory })
+        if (result) {
+          result.artistId = key
+          await fs.promises.mkdir(directory, { recursive: true })
+          const dest = cachePath(key, directory)
+          const temp = dest + '.' + process.pid + '.tmp'
+          await fs.promises.writeFile(temp, JSON.stringify(result))
+          await fs.promises.rename(temp, dest)
+          memory.set(key, result)
+        }
+      } catch (error) {
+        console.warn('[artist-visuals] Lookup failed for', name, error?.message || error)
+      }
+      // A namesake miss must never expose a previous artist's artwork.
+      return result ? publicResult(result) : valid ? publicResult(stored) : null
+    })().finally(() => pending.delete(key))
+    pending.set(key, job)
+  }
+  return pending.get(key)
+}
+
+async function artistMotionFor(artistId, artistName, titles, settings, { ffmpeg, cacheDir, directory } = {}) {
+  if (settings?.motion_covers === '0' || !ffmpeg || !cacheDir) return null
+  const row = memory.get(String(artistId)) || readCache(artistId, directory)
+  const known = new Set((Array.isArray(titles) ? titles : []).map(norm).filter(Boolean))
+  if (!acceptedCache(row, artistName, known)) return null
+  const url = safeURL(row?.motionURL, 'video')
+  if (!url) return null
+  const file = await cachedClip({ url, kind: /\.m3u8(?:[?#]|$)/i.test(url) ? 'hls' : 'mp4' }, {
+    cacheDir, ffmpeg, highResolution: settings?.high_resolution_motion_covers === '1'
+  })
+  return file ? { file, source: 'apple' } : null
+}
+
+module.exports = { parseVisuals, safeURL, acceptedCache, artistVisualsFor, artistMotionFor }
+)
+    const page = canonical && artistIdPattern.test(new URL(canonical).pathname)
+      ? canonical : safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
+    const html = await boundedFetch(page, { fetchImpl, kind: 'page', maxBytes: 6 * 1024 * 1024 })
+    if (!html) {
+      console.warn('[artist-visuals] Apple artist page unavailable:', artistName)
+      continue
+    }
     const visuals = parseVisuals(html.toString('utf8'))
-    if (!visuals) return null
+    if (!visuals) {
+      console.info('[artist-visuals] No artist logo or motion artwork supplied:', artistName)
+      continue
+    }
     const logoFile = visuals.logoURL
       ? await saveLogo(visuals.logoURL, candidate.artistId, directory, opts).catch(() => null)
       : null
