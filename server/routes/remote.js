@@ -232,6 +232,52 @@ router.get('/connection', (req, res) => res.json(getRemoteConnectionInfo()))
 
 // All collection endpoints sit below /api/remote and inherit the same
 // REMOTE_TOKEN check as transport commands.
+// A history-only mobile play may have no matching desktop audio. Retain its
+// album thumbnail independently of the music file, without accepting a path,
+// URL, remote token, or unbounded image from the phone. Existing real PC
+// recordings and their covers are never modified by this route.
+router.post('/history/artwork', async (req, res) => {
+  const userId = pairedUser(req, res)
+  if (!userId) return
+  const key = req.body?.track_key
+  const encoded = req.body?.image_base64
+  if (typeof key !== 'string' || !key.trim() || key.length > 1500 ||
+      typeof encoded !== 'string' || encoded.length > 240000 ||
+      !/^[a-zA-Z0-9+/]+={0,2}$/.test(encoded)) {
+    return res.status(400).json({ error: 'Invalid linked artwork.' })
+  }
+  const db = getDB()
+  const recorded = db.prepare(
+    'SELECT 1 FROM history_events WHERE user_id=? AND device_id=? AND track_key=? LIMIT 1'
+  ).get(userId, req.linkDevice.id, key)
+  if (!recorded) return res.status(404).json({ error: 'Unknown mobile play.' })
+  const id = 'link_' + require('../../electron/link/store').hash(key)
+  const row = db.prepare('SELECT file_path,artwork_path FROM tracks WHERE id=?').get(id)
+  if (!row || !String(row.file_path).startsWith('ghost://link/')) {
+    return res.status(404).json({ error: 'No mobile history placeholder.' })
+  }
+  const fs = require('fs')
+  if (row.artwork_path && fs.existsSync(row.artwork_path)) {
+    return res.json({ ok: true, alreadyPresent: true })
+  }
+  const bytes = Buffer.from(encoded, 'base64')
+  if (bytes.length < 20 || bytes.length > 180000 ||
+      !(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) {
+    return res.status(415).json({ error: 'Expected a bounded JPEG thumbnail.' })
+  }
+  try {
+    const root = require('path').join(require('../../electron/ipc/db').getStorageDir(), 'artwork')
+    const artwork = await require('../../electron/artwork/thumb').writeCover(
+      root, id + '-mobile-history', bytes
+    )
+    db.prepare("UPDATE tracks SET artwork_path=?,download_source='mobile' WHERE id=? AND file_path LIKE 'ghost://link/%'")
+      .run(artwork,id)
+    return res.set('Cache-Control', 'private, no-store').json({ ok: true })
+  } catch (error) {
+    return res.status(500).json({ error: 'Could not save mobile artwork.' })
+  }
+})
+
 // The paired phone imports in batches; using the remote UI's 50-row cap
 // made a 5,500-track library require 110 HTTP round trips.
 router.get('/library/file-size/:trackId', async (req, res) => {
