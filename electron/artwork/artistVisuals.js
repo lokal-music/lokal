@@ -168,8 +168,9 @@ async function artistVisualsFor(artistId, artistName, titles, options = {}) {
   }
   if (!pending.has(key)) {
     const job = (async () => {
+      let result = null
       try {
-        const result = await lookupApple(name, known, { ...options, directory })
+        result = await lookupApple(name, known, { ...options, directory })
         if (result) {
           result.artistId = key
           await fs.promises.mkdir(directory, { recursive: true })
@@ -178,12 +179,10 @@ async function artistVisualsFor(artistId, artistName, titles, options = {}) {
           await fs.promises.writeFile(temp, JSON.stringify(result))
           await fs.promises.rename(temp, dest)
           memory.set(key, result)
-        } else if (!valid) {
-          // Cache misses briefly but never erase previously validated assets.
-          memory.set(key, { artistId: key, name, proof: [...known], fetchedAt: Date.now() })
         }
       } catch { /* Editorial data is optional. Preserve cached art. */ }
-      return publicResult(memory.get(key) || (valid ? stored : {}))
+      // A namesake miss must never expose a previous artist's artwork.
+      return result ? publicResult(result) : valid ? publicResult(stored) : null
     })().finally(() => pending.delete(key))
     pending.set(key, job)
   }
