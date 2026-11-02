@@ -1,0 +1,198 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
+const require = createRequire(import.meta.url)
+const { LinkStore, hash } = require('../electron/link/store')
+const { trackKey } = require('../electron/link/protocol')
+
+function setup() {
+  const db = new DatabaseSync(':memory:')
+  // The production connection uses better-sqlite3; the built-in SQLite test
+  // fixture provides its transaction helper without requiring native builds.
+  db.transaction = fn => (...args) => {
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const result = fn(...args)
+      db.exec('COMMIT')
+      return result
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
+    }
+  }
+  db.exec(`
+    CREATE TABLE playlists (id TEXT PRIMARY KEY, uuid TEXT);
+    CREATE TABLE tracks (
+      id TEXT PRIMARY KEY, file_path TEXT UNIQUE, file_hash TEXT,
+      title TEXT, artist TEXT, album TEXT, album_artist TEXT, duration REAL,
+      download_source TEXT, artwork_url TEXT, artwork_path TEXT
+    );
+    CREATE TABLE play_history (
+      user_id TEXT, track_id TEXT, seconds_played INTEGER, played_at INTEGER
+    );
+    CREATE TABLE listening_events (
+      user_id TEXT, track_id TEXT, event_type TEXT, source_type TEXT,
+      source_id TEXT, seconds_played INTEGER, started_at INTEGER,
+      ended_at INTEGER, created_at INTEGER
+    );
+  `)
+  return { db, store: new LinkStore(db) }
+}
+
+const event = (name, extras = {}) => ({
+  event_id: 'phoneEvent_12345',
+  device_id: 'phone_12345678',
+  track_key: trackKey({ artist: name, title: 'Collaboration', duration: 180 }),
+  played_at: Date.now(),
+  ms_played: 85000,
+  source: 'phone',
+  track: {
+    id: 'mobile123', title: 'Collaboration', artist: name,
+    album_artist: 'SZA', album: 'Soundtrack', duration: 180,
+    ...extras
+  }
+})
+
+test('mobile artist-credit variants match the existing album owner and never create a ghost', () => {
+  const { db, store } = setup()
+  try {
+    db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+      .run('real', '/music/collaboration.flac', 'localhash', 'Collaboration',
+        'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    assert.equal(store.pushHistory([event('Kendrick Lamar, SZA')], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id, 'real')
+  } finally { db.close() }
+})
+
+test('same album owner and similar duration never attribute a different performer\'s play', () => {
+  const { db, store } = setup()
+  try {
+    const insert = db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('intro_one', '/music/intro-sza.flac', 'hash_sza', 'Intro',
+      'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    insert.run('intro_two', '/music/intro-summer.flac', 'hash_summer', 'Intro',
+      'SZA feat. Summer Walker', 'Soundtrack', 'SZA', 181)
+    const incoming = event('SZA feat. Future', { title: 'Intro' })
+    incoming.track_key = trackKey({ artist: incoming.track.artist, title: 'Intro', duration: 180 })
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    const attributed = db.prepare('SELECT track_id FROM play_history').get().track_id
+    assert.equal(attributed, 'link_' + hash(incoming.track_key))
+    assert.notEqual(attributed, 'intro_one')
+    assert.notEqual(attributed, 'intro_two')
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 3)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM history_events').get().n, 1)
+  } finally { db.close() }
+})
+
+test('reordered complete performer credits select only the compatible recording', () => {
+  const { db, store } = setup()
+  try {
+    const insert = db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('correct', '/music/correct.flac', 'correct_hash', 'Collaboration',
+      'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    insert.run('different', '/music/different.flac', 'different_hash', 'Collaboration',
+      'SZA feat. Summer Walker', 'Soundtrack', 'SZA', 180)
+    const play = event('Kendrick Lamar, SZA')
+    assert.equal(store.pushHistory([play], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id, 'correct')
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 2)
+  } finally { db.close() }
+})
+
+test('shared lead performer is insufficient when another collaborator differs', () => {
+  const { db, store } = setup()
+  try {
+    db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+      .run('wrong', '/music/track.flac', 'hash_local', 'Collaboration',
+        'SZA feat. Summer Walker', 'Soundtrack', 'SZA', 180)
+    const incoming = event('SZA feat. Kendrick Lamar')
+    assert.equal(store.matchTrack(incoming), null)
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id,
+      'link_' + hash(incoming.track_key))
+  } finally { db.close() }
+})
+
+test('ambiguous duplicate takes never choose the first compatible local recording', () => {
+  const { db, store } = setup()
+  try {
+    const insert = db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('take_a', '/music/take-a.flac', 'hash_a', 'Collaboration',
+      'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 179)
+    insert.run('take_b', '/music/take-b.flac', 'hash_b', 'Collaboration',
+      'SZA featuring Kendrick Lamar', 'Soundtrack', 'SZA', 181)
+    const incoming = event('Kendrick Lamar, SZA')
+    assert.equal(store.matchTrack(incoming), null)
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id,
+      'link_' + hash(incoming.track_key))
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n, 3)
+  } finally { db.close() }
+})
+
+test('contradictory event metadata cannot override performer credit in the track key', () => {
+  const { db, store } = setup()
+  try {
+    db.prepare('INSERT INTO tracks(id,file_path,file_hash,title,artist,album,album_artist,duration) VALUES (?,?,?,?,?,?,?,?)')
+      .run('local', '/music/local.flac', 'hash_local', 'Collaboration',
+        'SZA feat. Kendrick Lamar', 'Soundtrack', 'SZA', 180)
+    const incoming = event('Kendrick Lamar, SZA', { artist: 'SZA feat. Summer Walker' })
+    assert.equal(store.matchTrack(incoming), null)
+    assert.equal(store.pushHistory([incoming], 'guest', 'phone_12345678'), 1)
+    assert.equal(db.prepare('SELECT track_id FROM play_history').get().track_id,
+      'link_' + hash(incoming.track_key))
+  } finally { db.close() }
+})
+
+test('unmatched phone play retains source and public cover without pretending audio exists', () => {
+  const { db, store } = setup()
+  try {
+    const play = event('Unknown Singer', { artwork_url: 'https://example.org/cover.jpg' })
+    assert.equal(store.pushHistory([play], 'guest', 'phone_12345678'), 1)
+    const ghost = db.prepare('SELECT * FROM tracks WHERE id=?').get('link_' + hash(play.track_key))
+    assert.equal(ghost.download_source, 'mobile')
+    assert.equal(ghost.artwork_url, 'https://example.org/cover.jpg')
+    assert.equal(ghost.file_path, 'ghost://link/' + ghost.id)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM play_history').get().n, 1)
+    assert.equal(store.pushHistory([play], 'guest', 'phone_12345678'), 0)
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM play_history').get().n, 1)
+  } finally { db.close() }
+})
+
+test('signed mobile artwork links are never imported as reusable cover URLs', () => {
+  const { db, store } = setup()
+  try {
+    const play = event('Unknown Singer', {
+      artwork_url: 'https://example.org/cover.jpg?token=private'
+    })
+    store.pushHistory([play], 'guest', 'phone_12345678')
+    assert.equal(
+      db.prepare('SELECT artwork_url FROM tracks WHERE id=?').get('link_' + hash(play.track_key)).artwork_url,
+      null
+    )
+  } finally { db.close() }
+})
+
+test('artwork endpoint requires pairing, source ownership and bounded JPEG bytes', () => {
+  const source = readFileSync(new URL('../server/routes/remote.js', import.meta.url), 'utf8')
+  const icon = readFileSync(new URL('../src/components/SourceIcon.jsx', import.meta.url), 'utf8')
+  assert.match(source, /router\.post\('\/history\/artwork'/)
+  assert.match(source, /const userId = pairedUser\(req, res\)/)
+  assert.match(source, /WHERE user_id=\? AND device_id=\? AND track_key=\?/)
+  assert.match(source, /bytes\.length < 20 \|\| bytes\.length > 180000/)
+  assert.match(source, /file_path LIKE 'ghost:\/\/link\/%'/)
+  assert.match(icon, /Played on Lokal Mobile · audio not stored on this PC/)
+})
+
+test('phone audio copies preserve external album art only when missing', () => {
+  const remote = readFileSync(new URL('../server/routes/remote.js', import.meta.url), 'utf8')
+  const importer = readFileSync(new URL('../server/linkUpload.js', import.meta.url), 'utf8')
+  assert.match(remote, /router\.post\('\/files\/:trackId\/artwork'/)
+  assert.match(remote, /row\.download_source !== 'mobile'/)
+  assert.match(remote, /artwork_path IS NULL OR artwork_path=''/)
+  assert.match(importer, /ghost\?\.artwork_path/)
+  assert.match(importer, /await fs\.pathExists\(ghost\.artwork_path\)/)
+})

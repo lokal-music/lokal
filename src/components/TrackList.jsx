@@ -987,7 +987,13 @@ export default function TrackList({ tracks = [], showQuality = false, onRemove =
                   <p title={track.title} className={`min-w-0 text-sm font-medium truncate ${isCurrent ? 'text-accent' : 'text-white'}`}>{track.title}</p>
                   {!!track.explicit && <span className="px-1.5 py-0.5 rounded border border-border bg-card text-[10px] leading-[14px] font-display uppercase tracking-wide text-muted flex-shrink-0">E</span>}
                   {isMissing && <span className="px-1.5 py-0.5 rounded-full bg-red-400/10 border border-red-400/20 text-[10px] leading-[14px] uppercase tracking-wide text-red-200 flex-shrink-0">{t("Missing file")}</span>}
-                  {!isMissing && isGhost && <span className="px-1.5 py-0.5 rounded-full bg-yellow-400/10 border border-yellow-400/20 text-[10px] leading-[14px] uppercase tracking-wide text-yellow-200 flex-shrink-0">{t("Ghost")}</span>}
+                  {!isMissing && isGhost && <span
+                    title={String(track.file_path || '').startsWith('ghost://link/')
+                      ? 'Played on Lokal Mobile; original audio is not on this PC'
+                      : t('Ghost song')}
+                    className="px-1.5 py-0.5 rounded-full bg-yellow-400/10 border border-yellow-400/20 text-[10px] leading-[14px] uppercase tracking-wide text-yellow-200 flex-shrink-0"
+                  >{String(track.file_path || '').startsWith('ghost://link/')
+                      ? t('Mobile history') : t('Ghost')}</span>}
                   {!isMissing && track.playback_error && (track.playback_error === 'FFMPEG_MISSING'
                     ? <button type="button" onClick={e => { e.stopPropagation(); setFfmpegPromptTrack(track); setFfmpegPromptError('') }}
                         title={t('Click to download FFmpeg and retry playback.')}

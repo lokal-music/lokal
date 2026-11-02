@@ -5,6 +5,7 @@ on:
     paths:
       - 'electron/link/**'
       - 'scripts/desktop-link-playlist-reconcile.test.mjs'
+      - 'scripts/mobile-history-artwork.test.mjs'
       - 'package.json'
       - '.github/workflows/desktop-link-ci.yml'
 
@@ -27,3 +28,5 @@ jobs:
           node --check electron/link/reconcile.js
       - name: Test desktop playlist synchronization
         run: npm run test:desktop-link-playlists
+      - name: Test mobile history attribution and artwork guards
+        run: npm run test:mobile-history-artwork

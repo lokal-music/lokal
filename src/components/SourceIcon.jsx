@@ -73,11 +73,16 @@ export default function SourceIcon({ source, size = 14, className = '', colored 
 
 export function TrackSourceIcon({ track, addonNames, className = '' }) {
   const stream = streamRef(track)
-  const source = stream?.provider || track.download_source
+  const mobileHistory = String(track.file_path || '').startsWith('ghost://link/')
+  const source = stream?.provider || track.download_source || (mobileHistory ? 'mobile' : null)
   const label = downloadSourceLabel(source, addonNames)
   const local = !source && !String(track.file_path || '').startsWith('ghost://')
   if (local) return null
-  const description = source === 'mobile' ? 'Copied from mobile' : label ? `${stream ? 'Streamed' : 'Downloaded'} from ${label}${stream ? ' · not in your library yet' : ''}` : 'Source unknown'
+  const description = mobileHistory
+    ? 'Played on Lokal Mobile · audio not stored on this PC'
+    : source === 'mobile' ? 'Copied from mobile'
+    : label ? `${stream ? 'Streamed' : 'Downloaded'} from ${label}${stream ? ' · not in your library yet' : ''}`
+    : 'Source unknown'
   return (
     <span role="img" aria-label={description} title={description} className={`inline-flex shrink-0 items-center justify-center text-muted ${className}`}>
       <SourceIcon source={source} addonName={isAddonProvider(source) ? addonNames?.[source] : ''} />
