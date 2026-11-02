@@ -3,7 +3,7 @@ import { Activity, ChevronDown, ChevronUp, Download, FolderOpen, Headphones, Plu
 import Modal from './Modal'
 import { EQ_FREQUENCIES, EQ_PRESETS, EQ_TYPES, clamp, defaults, loadEqState, saveEqState, applyPreset, parseEqPreset, presetFromState, exportEqPresetText } from '../audio/equalizerConfig.mjs'
 import { storeImpulseFile, clearImpulseFile } from '../audio/equalizerGraph.mjs'
-import { equalizerResponseDb } from '../audio/equalizerResponse.mjs'
+import { equalizerResponseDb, estimateEqHeadroomDb } from '../audio/equalizerResponse.mjs'
 
 const CUSTOM_PRESETS='lokal-eq-custom-presets'
 const BAND_LABELS=['32','64','125','250','500','1k','2k','4k','8k','16k']
@@ -179,15 +179,27 @@ export default function EqualizerModal({open,onClose,onChange}){
     parametricBands:previous.parametricBands.map((b,j)=>j===i?{...b,...values}:b)}))
   const addBand=()=>change(previous=>({...previous,activePresetName:null,
     parametricBands:[...previous.parametricBands,{enabled:true,frequencyHz:1000,gainDb:0,q:1,type:'peaking'}]}))
+  const resetSection=section=>change(previous=>({...previous,[section]:defaults()[section],activePresetName:null}))
+  const resetAll=async()=>{
+    await clearImpulseFile().catch(()=>{})
+    change(defaults())
+    window.dispatchEvent(new Event('lokal:eq-ir-changed'))
+    setMessage('All EQ and FX settings reset')
+  }
+  const headroom=useMemo(()=>estimateEqHeadroomDb(state),[state])
   return <Modal open={open} onClose={onClose} title="Equalizer" width="max-w-5xl">
     <div className="flex flex-col gap-4 pb-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-lg font-display text-white">Shape your sound</h2><p className={css.muted}>{state.activePresetName||'Custom'} · Graphic and parametric EQ with advanced audio processing</p></div>
-        <EqToggle label="Enable equalizer" checked={state.enabled} onChange={value=>change({enabled:value})}/>
+        <div className="flex flex-wrap items-center gap-2"><button className={css.button} onClick={resetAll}><RotateCcw size={13} className="inline mr-1"/> Reset all</button><EqToggle label="Enable equalizer" checked={state.enabled} onChange={value=>change({enabled:value})}/></div>
       </div>
       {message&&<p role="status" className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-white">{message}</p>}
-      <div className={css.panel}><EqSlider label="Preamp" value={state.preampDb} min={-24} max={24} step={.5}
-        onChange={v=>change({preampDb:v,activePresetName:null})}/></div>
+      <div className={css.panel}>
+        <SectionTitle side={<button className={css.button} onClick={()=>change({preampDb:0,activePresetName:null})}><RotateCcw size={13} className="inline mr-1"/> Reset</button>}>Preamp and headroom</SectionTitle>
+        <EqSlider label="Preamp" value={state.preampDb} min={-24} max={24} step={.1} onChange={v=>change({preampDb:v,activePresetName:null})}/>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><EqToggle label="Automatic anti-clipping headroom" checked={state.autoHeadroom} onChange={v=>change({autoHeadroom:v})}/><span className="text-xs text-muted tabular-nums">{headroom>0?`Additional attenuation: −${headroom.toFixed(1)} dB`:'No additional attenuation'}</span></div>
+        <p className="mt-2 text-[11px] text-muted">Balances combined EQ boosts before output to reduce saturation. Disable for manual gain staging; already-clipped sources cannot be repaired.</p>
+      </div>
       <div className={css.panel}>
         <SectionTitle side={<button className={css.button} onClick={()=>setPresetsOpen(p=>!p)}><FolderOpen size={14} className="inline mr-1"/> Browse presets {presetsOpen?<ChevronUp size={13} className="inline"/>:<ChevronDown size={13} className="inline"/>}</button>}>Presets and AutoEQ</SectionTitle>
         <div className="flex flex-wrap gap-2">
@@ -217,20 +229,21 @@ export default function EqualizerModal({open,onClose,onChange}){
           {!loadingCatalog&&catalog&&autoeqMatches.length===0&&<p className={css.muted}>No matching profiles.</p>}
         </div>}
       </div>
+      <div className={css.panel}><SectionTitle>EQ mode</SectionTitle><div className="flex flex-wrap gap-2">{['graphic','parametric'].map(mode=><button key={mode} aria-pressed={state.mode===mode} className={css.button+' '+(state.mode===mode?'border-accent/60 text-accent':'')} onClick={()=>change({mode})}>{mode==='graphic'?'Graphic (10-band)':'Parametric (15 bands, up to 31)'}</button>)}</div></div>
       <ResponsePreview state={state} onBandChange={moveBand}/>
       {state.mode==='graphic'
         ?<div className={css.panel}>
-          <SectionTitle side={<button className={css.button} onClick={()=>change({graphicGainsDb:Array(10).fill(0),preampDb:0,activePresetName:null})}><RotateCcw size={13} className="inline mr-1"/> Reset bands</button>}>10-band graphic EQ</SectionTitle>
+          <SectionTitle side={<button className={css.button} onClick={()=>change({graphicGainsDb:Array(EQ_FREQUENCIES.length).fill(0),activePresetName:null})}><RotateCcw size={13} className="inline mr-1"/> Reset bands</button>}>10-band graphic EQ</SectionTitle>
           <div className="flex items-end justify-between gap-1 overflow-x-auto pb-1">{BAND_LABELS.map((name,i)=><div key={name} className="flex min-w-[41px] flex-1 flex-col items-center gap-2">
             <span className="text-[10px] tabular-nums text-white">{state.graphicGainsDb[i]>0?'+':''}{state.graphicGainsDb[i].toFixed(1)}</span>
-            <input aria-label={name+' gain'} className="accent-accent" type="range" min="-20" max="20" step=".5" value={state.graphicGainsDb[i]}
+            <input aria-label={name+' gain'} className="accent-accent" type="range" min="-20" max="20" step=".1" value={state.graphicGainsDb[i]}
               onChange={e=>change(previous=>({...previous,activePresetName:null,graphicGainsDb:previous.graphicGainsDb.map((v,j)=>j===i?Number(e.target.value):v)}))}
               style={{writingMode:'vertical-lr',direction:'rtl',height:160,width:24}}/>
             <span className="text-[10px] text-muted">{name}</span>
           </div>)}</div>
         </div>
         :<div className={css.panel}>
-          <SectionTitle side={<button className={css.button} disabled={state.parametricBands.length>=31} onClick={addBand}><Plus size={14} className="inline"/> Add band ({state.parametricBands.length}/31)</button>}>Parametric EQ</SectionTitle>
+          <SectionTitle side={<div className="flex flex-wrap gap-2"><button className={css.button} onClick={()=>change({parametricBands:defaults().parametricBands,activePresetName:null})}><RotateCcw size={13} className="inline mr-1"/> Reset bands</button><button className={css.button} disabled={state.parametricBands.length>=31} onClick={addBand}><Plus size={14} className="inline"/> Add band ({state.parametricBands.length}/31)</button></div>}>Parametric EQ</SectionTitle>
           <div className="space-y-2 max-h-96 overflow-y-auto">{state.parametricBands.map((band,i)=><div key={i} className="grid grid-cols-[auto_minmax(110px,1.2fr)_minmax(65px,1fr)_minmax(60px,1fr)_minmax(60px,1fr)_auto] items-center gap-2 rounded-lg border border-border/50 bg-elevated/30 p-2">
             <input aria-label={'Band '+(i+1)+' enabled'} type="checkbox" checked={band.enabled} className="accent-accent" onChange={e=>updateBand(i,'enabled',e.target.checked)}/>
             <select aria-label={'Band '+(i+1)+' type'} className={css.input} value={band.type} onChange={e=>updateBand(i,'type',e.target.value)}>{EQ_TYPES.map(type=><option key={type} value={type}>{type}</option>)}</select>
@@ -241,32 +254,29 @@ export default function EqualizerModal({open,onClose,onChange}){
           </div>)}</div>
         </div>}
       <button className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left text-sm text-white hover:bg-white/10" onClick={()=>setAdvanced(a=>!a)}>
-        <span className="flex items-center gap-2"><SlidersHorizontal size={16}/> Advanced <span className="text-xs text-muted">Parametric EQ, tone, dynamics, FX, convolver</span></span>{advanced?<ChevronUp size={16}/>:<ChevronDown size={16}/>}
+        <span className="flex items-center gap-2"><SlidersHorizontal size={16}/> Advanced <span className="text-xs text-muted">Tone, dynamics, FX, convolver</span></span>{advanced?<ChevronUp size={16}/>:<ChevronDown size={16}/>}
       </button>
       {advanced&&<>
-        <div className={css.panel}><SectionTitle>EQ type</SectionTitle>
-          <div className="flex gap-2">{['graphic','parametric'].map(mode=><button key={mode} aria-pressed={state.mode===mode} className={css.button+' '+(state.mode===mode?'border-accent/60 text-accent':'')} onClick={()=>change({mode})}>{mode==='graphic'?'Graphic (10-band)':'Parametric (up to 31 bands)'}</button>)}</div>
-        </div>
-        <div className={css.panel}><SectionTitle>Tone</SectionTitle><div className="grid gap-5 sm:grid-cols-3">
+        <div className={css.panel}><SectionTitle side={<button className={css.button} onClick={()=>change({bassDb:0,midDb:0,trebleDb:0,activePresetName:null})}><RotateCcw size={13} className="inline mr-1"/> Reset</button>}>Tone</SectionTitle><div className="grid gap-5 sm:grid-cols-3">
           {['bassDb','midDb','trebleDb'].map(key=><EqSlider key={key} label={key.replace('Db','')} value={state[key]} min={-20} max={20} step={.5} onChange={v=>change({[key]:v})}/>)}
         </div></div>
-        <div className={css.panel}><SectionTitle side={<EqToggle label="Enable compressor" checked={state.compressor.enabled} onChange={v=>nested('compressor','enabled',v)}/>}>Compressor</SectionTitle>
+        <div className={css.panel}><SectionTitle side={<div className="flex gap-2 items-center"><button className={css.button} onClick={()=>resetSection('compressor')}><RotateCcw size={13} className="inline mr-1"/> Reset</button><EqToggle label="Enable compressor" checked={state.compressor.enabled} onChange={v=>nested('compressor','enabled',v)}/></div>}>Compressor</SectionTitle>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {[['thresholdDb','Threshold',-36,0,.5,'dB'],['ratio','Ratio',1,12,.1,':1'],['attackMs','Attack',1,100,1,'ms'],['releaseMs','Release',20,500,5,'ms'],['makeupGainDb','Makeup gain',-20,20,.5,'dB']].map(([key,label,min,max,step,unit])=><EqSlider key={key} label={label} value={state.compressor[key]} min={min} max={max} step={step} unit={unit} onChange={v=>nested('compressor',key,v)}/>)}
           </div>
         </div>
-        <div className={css.panel}><SectionTitle side={<EqToggle label="Enable limiter" checked={state.limiter.enabled} onChange={v=>nested('limiter','enabled',v)}/>}>Limiter</SectionTitle>
+        <div className={css.panel}><SectionTitle side={<div className="flex gap-2 items-center"><button className={css.button} onClick={()=>resetSection('limiter')}><RotateCcw size={13} className="inline mr-1"/> Reset</button><EqToggle label="Enable limiter" checked={state.limiter.enabled} onChange={v=>nested('limiter','enabled',v)}/></div>}>Limiter</SectionTitle>
           <div className="grid gap-5 sm:grid-cols-3">
             {[['inputGainDb','Input gain',0,12,.5,'dB'],['ceilingDb','Ceiling',-12,0,.1,'dB'],['releaseMs','Release',20,300,5,'ms']].map(([key,label,min,max,step,unit])=><EqSlider key={key} label={label} value={state.limiter[key]} min={min} max={max} step={step} unit={unit} onChange={v=>nested('limiter',key,v)}/>)}
           </div>
         </div>
-        <div className={css.panel}><SectionTitle side={<EqToggle label="Enable FX" checked={state.fx.enabled} onChange={v=>nested('fx','enabled',v)}/>}>Creative FX and balance</SectionTitle>
+        <div className={css.panel}><SectionTitle side={<div className="flex gap-2 items-center"><button className={css.button} onClick={()=>resetSection('fx')}><RotateCcw size={13} className="inline mr-1"/> Reset</button><EqToggle label="Enable FX" checked={state.fx.enabled} onChange={v=>nested('fx','enabled',v)}/></div>}>Creative FX and balance</SectionTitle>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[['balance','Balance',-1,1,.05,''],['tempo','Tempo',.5,2,.01,'×'],['width','Stereo width',0,2,.05,'×'],['damp','Damping',0,1,.05,''],['filterHz','Filter',200,18000,100,'Hz'],['delayMs','Delay',10,1600,10,'ms'],['size','Size',0,1,.05,''],['mix','Wet mix',0,1,.05,''],['feedback','Feedback',0,.95,.05,'']].map(([key,label,min,max,step,unit])=><EqSlider key={key} label={label} value={state.fx[key]} min={min} max={max} step={step} unit={unit} onChange={v=>nested('fx',key,v)}/>)}
+            {[['balance','Balance',-1,1,.05,''],['width','Stereo width',0,2,.05,'×'],['damp','Damping',0,1,.05,''],['filterHz','Filter',200,18000,100,'Hz'],['delayMs','Delay',10,1600,10,'ms'],['size','Size',0,1,.05,''],['mix','Wet mix',0,1,.05,''],['feedback','Feedback',0,.95,.05,'']].map(([key,label,min,max,step,unit])=><EqSlider key={key} label={label} value={state.fx[key]} min={min} max={max} step={step} unit={unit} onChange={v=>nested('fx',key,v)}/>)}
           </div>
-          <p className="mt-4 text-xs text-muted">Tempo multiplies the normal playback-speed setting while preserving pitch. Desktop delay and stereo effects use Web Audio, so their algorithms differ from mobile's Rust FX.</p>
+          <p className="mt-4 text-xs text-muted">Playback tempo is controlled only through the precise playback-speed control (0.01× steps). Desktop delay and stereo effects use Web Audio.</p>
         </div>
-        <div className={css.panel}><SectionTitle side={<EqToggle label="Enable convolver" checked={state.convolver.enabled} onChange={v=>nested('convolver','enabled',v)}/>}>Convolver</SectionTitle>
+        <div className={css.panel}><SectionTitle side={<div className="flex gap-2 items-center"><button className={css.button} onClick={removeImpulse}><RotateCcw size={13} className="inline mr-1"/> Reset</button><EqToggle label="Enable convolver" checked={state.convolver.enabled} onChange={v=>nested('convolver','enabled',v)}/></div>}>Convolver</SectionTitle>
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <button className={css.button} onClick={()=>irRef.current?.click()}><Upload size={14} className="inline mr-1"/> Load impulse response</button>
             <input type="file" ref={irRef} hidden accept="audio/*,.wav,.flac" onChange={e=>{loadImpulse(e.target.files?.[0]);e.target.value=''}}/>
