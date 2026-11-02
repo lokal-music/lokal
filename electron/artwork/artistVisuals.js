@@ -137,6 +137,17 @@ async function lookupApple(artistName, knownTitles, { fetchImpl, directory }) {
     const proof = [...new Set((songs?.results || []).filter(s => s.wrapperType === 'track')
       .flatMap(s => [norm(s.trackName), norm(s.collectionName)])
       .filter(title => knownTitles.has(title)))]
+    // Mobile also tries matching the artist's releases when none of its
+    // popular songs overlap the library. Do not accept the name alone.
+    if (!proof.length) {
+      const albums = await appleJson('https://itunes.apple.com/lookup?' + new URLSearchParams({
+        id: String(candidate.artistId), entity: 'album', limit: '100', country: 'us'
+      }), opts)
+      for (const item of albums?.results || []) {
+        const title = norm(item.collectionName)
+        if (item.wrapperType === 'collection' && knownTitles.has(title) && !proof.includes(title)) proof.push(title)
+      }
+    }
     if (!proof.length) continue
     const page = safeURL('https://music.apple.com/us/artist/-/' + encodeURIComponent(candidate.artistId))
     const html = await boundedFetch(page, { fetchImpl, maxBytes: 6 * 1024 * 1024 })
@@ -189,9 +200,11 @@ async function artistVisualsFor(artistId, artistName, titles, options = {}) {
   return pending.get(key)
 }
 
-async function artistMotionFor(artistId, settings, { ffmpeg, cacheDir, directory } = {}) {
+async function artistMotionFor(artistId, artistName, titles, settings, { ffmpeg, cacheDir, directory } = {}) {
   if (settings?.motion_covers === '0' || !ffmpeg || !cacheDir) return null
   const row = memory.get(String(artistId)) || readCache(artistId, directory)
+  const known = new Set((Array.isArray(titles) ? titles : []).map(norm).filter(Boolean))
+  if (!acceptedCache(row, artistName, known)) return null
   const url = safeURL(row?.motionURL, 'video')
   if (!url) return null
   const file = await cachedClip({ url, kind: /\.m3u8(?:[?#]|$)/i.test(url) ? 'hls' : 'mp4' }, {
