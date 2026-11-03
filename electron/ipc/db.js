@@ -66,6 +66,7 @@ function initDB() {
       artwork_path TEXT,
       bitrate INTEGER,
       last_modified INTEGER,
+      replaygain TEXT,
       play_count INTEGER DEFAULT 0,
       liked INTEGER DEFAULT 0,
       added_at INTEGER DEFAULT (unixepoch())
@@ -216,6 +217,7 @@ function initDB() {
     `ALTER TABLE play_history ADD COLUMN seconds_played INTEGER DEFAULT 0`,
     `ALTER TABLE play_history ADD COLUMN session_id TEXT`,
     `ALTER TABLE tracks ADD COLUMN genres TEXT`,
+    `ALTER TABLE tracks ADD COLUMN replaygain TEXT`,
     // Ghost tracks: where the song can be found (an import link, or the
     // YouTube Music page of an online song) and its remote cover.
     `ALTER TABLE tracks ADD COLUMN source_url TEXT`,
@@ -268,6 +270,7 @@ function initDB() {
     `ALTER TABLE artists ADD COLUMN image_source TEXT`,
     `ALTER TABLE artists ADD COLUMN image_fetched_at INTEGER`,
     `ALTER TABLE tracks ADD COLUMN genres TEXT`,
+    `ALTER TABLE tracks ADD COLUMN replaygain TEXT`,
     // Ghost tracks: where the song can be found (an import link, or the
     // YouTube Music page of an online song) and its remote cover.
     `ALTER TABLE tracks ADD COLUMN source_url TEXT`,
