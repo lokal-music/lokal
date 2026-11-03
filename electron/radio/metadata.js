@@ -75,7 +75,9 @@ function parseIcecast(data, streamUrl) {
     try { return new URL(item.listenurl).pathname === wanted } catch { return false }
   })
   // Do not misattribute a different mount on a shared radio host.
-  const source = matching || (rows.length === 1 ? rows[0] : null)
+  // Single-mount servers may omit listenurl entirely. If a listenurl is
+  // present but identifies another mount, don't attribute its song here.
+  const source = matching || (rows.length === 1 && !rows[0]?.listenurl ? rows[0] : null)
   if (!source) return null
   // Icecast implementations disagree about whether "title" is the
   // station's display name or the current recording. Prefer explicit
@@ -162,17 +164,29 @@ function azuraCastStatusUrl(streamUrl) {
 }
 
 async function fetchStatus(url, fetchImpl = globalThis.fetch) {
-  const safe = await isPublicHttpUrl(url, { resolveDns: fetchImpl === globalThis.fetch })
-  if (!safe) return null
-  const response = await fetchImpl(url, {
-    redirect: 'error',
-    signal: AbortSignal.timeout(4500),
-    headers: { Accept: 'application/json', 'User-Agent': 'Lokal-Stations/1.0' },
-  })
-  if (!response.ok || Number(response.headers?.get?.('content-length') || 0) > MAX_BODY) return null
-  const body = await response.text()
-  if (body.length > MAX_BODY) return null
-  try { return JSON.parse(body) } catch { return null }
+  let target = url
+  // Radio-host metadata endpoints commonly redirect HTTP -> HTTPS. Follow
+  // those redirects without forwarding arbitrary private-network addresses.
+  for (let hop = 0; hop <= 3; hop++) {
+    if (!(await isPublicHttpUrl(target, { resolveDns: fetchImpl === globalThis.fetch }))) return null
+    const response = await fetchImpl(target, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(4500),
+      headers: { Accept: 'application/json', 'User-Agent': 'Lokal-Stations/1.0' },
+    })
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      if (hop === 3) return null
+      const location = response.headers?.get?.('location')
+      if (!location) return null
+      try { target = new URL(location, target).href } catch { return null }
+      continue
+    }
+    if (!response.ok || Number(response.headers?.get?.('content-length') || 0) > MAX_BODY) return null
+    const body = await response.text()
+    if (body.length > MAX_BODY) return null
+    try { return JSON.parse(body) } catch { return null }
+  }
+  return null
 }
 
 async function cachedFetch(target, work, fetchImpl) {
