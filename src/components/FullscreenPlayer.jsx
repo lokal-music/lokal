@@ -21,7 +21,9 @@ import { startCoverFlight } from '../coverFlight'
 import { QueueContent } from './QueuePanel'
 import LyricsFullscreen, { FULLSCREEN_SWITCH, FULLSCREEN_IN, FULLSCREEN_OUT } from './LyricsFullscreen'
 import { api, wordSyncEnabled } from '../api'
-import { contextLabel, isContextNavigable, navigateToContext } from '../playbackContext'
+import { contextLabel, isContextNavigable, navigateToContext, navigateToTrackAlbum } from '../playbackContext'
+import { isStationTrack } from '../radio/stations'
+import { navigateToRadioAlbum } from '../radio/stationAlbum'
 import { trackArtURL, trackFullArtURL } from '../onlineTracks'
 import { useVolumeWheel } from '../volumeWheel'
 import { usePerformanceMode } from '../performanceMode'
@@ -278,6 +280,21 @@ export default function FullscreenPlayer() {
   })))
   const { user, openAddToPlaylist } = useAppStore()
   const nav = useNavigate()
+  const openFullscreenAlbum = async (target = currentTrack) => {
+    if (!target) return
+    // Both resolvers navigate via the supplied callback only after an album
+    // is found. Close the overlay immediately before that navigation, never
+    // when a radio lookup fails (otherwise the user loses their player).
+    const navigateFromFullscreen = (...args) => {
+      toggleFullscreen()
+      nav(...args)
+    }
+    if (isStationTrack(target)) {
+      if (!await navigateToRadioAlbum(navigateFromFullscreen, target)) showToast(t("Couldn't find this song's album"))
+    } else {
+      navigateToTrackAlbum(navigateFromFullscreen, target)
+    }
+  }
   const wordSync = wordSyncEnabled()
   const [likeAnim, setLikeAnim] = useState(false)
   const [burst, setBurst] = useState(null)
@@ -1077,7 +1094,15 @@ export default function FullscreenPlayer() {
             <motion.div key={currentTrack?.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               data-fullscreen-track-metadata="" aria-hidden={!trackDetailsVisible}
               className={`mt-5 text-center transition-opacity duration-300 ${trackDetailsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} style={{ width: turntableMode ? 'min(42rem, calc(100vw - 4rem))' : coverSize }}>
-              <h2 className="text-3xl font-bold text-white leading-tight truncate">{currentTrack?.title || '—'}</h2>
+              {currentTrack && (currentTrack.album || (isStationTrack(currentTrack) && currentTrack.song_key)) ? (
+                <button type="button" onClick={() => openFullscreenAlbum(currentTrack)}
+                  title={t('Go to album')} aria-label={t('Go to album')}
+                  className="block w-full text-center text-3xl font-bold text-white leading-tight truncate hover:underline hover:text-white/85 transition-colors">
+                  {currentTrack.title}
+                </button>
+              ) : (
+                <h2 className="text-3xl font-bold text-white leading-tight truncate">{currentTrack?.title || '—'}</h2>
+              )}
               <p className="mt-1.5 text-lg text-white/70 truncate">{currentTrack?.artist}</p>
               {currentTrack?.album && <p className="mt-0.5 text-sm text-white/40 truncate">{currentTrack.album}</p>}
             </motion.div>

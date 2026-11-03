@@ -11,6 +11,7 @@ import { isOnlineTrack } from '../onlineBrowse'
 import { isStationTrack } from '../radio/stations'
 import { useRadioStore } from '../store/radio'
 import { resolveStationSong } from '../radio/stationSong'
+import { navigateToRadioAlbum } from '../radio/stationAlbum'
 import { showToast } from './Toaster'
 import Waveform from './Waveform'
 import Spectrum from '../visualizers/Spectrum'
@@ -225,8 +226,7 @@ export default function PlayerBar() {
   const hasAlbum = !station && (!!currentTrack?.album || (!!isOnlineTrack(currentTrack) && !!(currentTrack?.source_album_id || currentTrack?.sourceAlbumId || currentTrack?.albumId)))
   // A radio song: its album, found online (the playing song's lookup, as for Like and Save).
   const openStationAlbum = async (target = currentTrack) => {
-    const found = await resolveStationSong(target)
-    if (!found || !navigateToTrackAlbum(nav, found)) showToast(t("Couldn't find this song's album"))
+    if (!await navigateToRadioAlbum(nav, target)) showToast(t("Couldn't find this song's album"))
   }
   const handleTitleClick = (target = currentTrack) => {
     if (!target?.album && !target?.source_album_id && !target?.sourceAlbumId && !target?.albumId) return

@@ -31,7 +31,7 @@ import TrackArtistLinks from './TrackArtistLinks'
 import { cacheLyrics, peekLyrics, hasLyricLines } from '../lyrics/lyricsCache'
 import { isOnlineTrack } from '../onlineBrowse'
 import { isStationTrack } from '../radio/stations'
-import { resolveStationSong } from '../radio/stationSong'
+import { navigateToRadioAlbum } from '../radio/stationAlbum'
 import { showToast } from './Toaster'
 import { isStreamed, trackArtURL, trackFullArtURL } from '../onlineTracks'
 import { artworkCandidates } from '../artworkQuality.mjs'
@@ -496,8 +496,7 @@ export default function RightSidebar() {
   // A radio song: its album, found online (the playing song's lookup).
   const stationSongKnown = isStationTrack(currentTrack) && !!currentTrack?.song_key
   const openStationAlbum = async () => {
-    const found = await resolveStationSong(currentTrack)
-    if (!found || !navigateToTrackAlbum(nav, found)) showToast(t("Couldn't find this song's album"))
+    if (!await navigateToRadioAlbum(nav, currentTrack)) showToast(t("Couldn't find this song's album"))
   }
   const hasAlbumLink = !isStationTrack(currentTrack) && (!!currentTrack?.album || (isStreamed(currentTrack) && !!(currentTrack?.source_album_id || currentTrack?.sourceAlbumId || currentTrack?.albumId)))
 
