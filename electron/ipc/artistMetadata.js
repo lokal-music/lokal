@@ -6,7 +6,7 @@ const { getStorageDir } = require('./db')
 const audioDb = require('../theAudioDb')
 
 const ARTIST_METADATA_TTL_MS = 1000 * 60 * 60 * 24 * 7
-const USER_AGENT = 'Lokal/1.9.0 (https://github.com/lokal-music/lokal)'
+const USER_AGENT = 'Lokal/1.9.0 (https://github.com/lokal-music/Desktop)'
 
 function getJson(url, timeoutMs = 5000) {
   const controller = new AbortController()
