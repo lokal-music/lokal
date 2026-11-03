@@ -5,13 +5,18 @@ on:
     paths:
       - 'electron/radio/browser.js'
       - 'electron/radio/metadata.js'
+      - 'electron/radio/nowPlaying.js'
+      - 'src/radio/radioSession.js'
+      - 'src/radio/streamMetadata.mjs'
       - 'src/pages/Stations.jsx'
       - 'scripts/radio-browser.test.mjs'
       - 'scripts/radio-metadata.test.mjs'
+      - 'scripts/radio-stream-metadata.test.mjs'
       - '.github/workflows/stations-ci.yml'
   push:
     branches:
       - feat/stations-radio-browser-hq-256
+      - fix/stations-desktop-live-metadata-parity
 
 permissions:
   contents: read
@@ -28,4 +33,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verify quality gates, stream deduplication and bounded metadata
-        run: node --test scripts/radio-browser.test.mjs scripts/radio-metadata.test.mjs
+        run: node --test scripts/radio-browser.test.mjs scripts/radio-metadata.test.mjs scripts/radio-stream-metadata.test.mjs
