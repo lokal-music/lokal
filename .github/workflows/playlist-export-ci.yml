@@ -1,0 +1,40 @@
+name: Desktop portable playlist export
+
+on:
+  pull_request:
+    paths:
+      - 'electron/playlists/exportM3u.js'
+      - 'electron/ipc/playlists.js'
+      - 'electron/libraryFolder.js'
+      - 'electron/preload.js'
+      - 'src/pages/Playlist.jsx'
+      - 'src/api.js'
+      - 'scripts/playlist-m3u-export.test.mjs'
+      - 'package.json'
+      - '.github/workflows/playlist-export-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate portable M3U and M3U8 formatting
+        run: npm run test:playlist-export
+      - name: Validate Electron source syntax
+        run: npm run test:electron-syntax
+      - name: Install desktop dependencies
+        run: npm ci --ignore-scripts
+      - name: Compile renderer
+        run: |
+          npm run gen:icons
+          npx vite build

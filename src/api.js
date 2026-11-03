@@ -325,6 +325,7 @@ export const api = {
   removeFromPlaylist: (pl, tid) => isE() ? el().removeFromPlaylist(pl, tid) : apiFetch(`/playlists/${pl}/tracks/${tid}`, { method:'DELETE' }),
   getPlaylistTracks: (pl) => isE() ? el().getPlaylistTracks(pl) : apiFetch(`/playlists/${pl}/tracks`),
   deletePlaylist: (pl) => isE() ? el().deletePlaylist(pl) : apiFetch(`/playlists/${pl}`, { method:'DELETE' }),
+  exportPlaylistFile: (playlistId, userId, format = 'm3u8') => isE() ? el().exportPlaylistFile(String(playlistId), userId || 'guest', format) : Promise.resolve({ error: 'Playlist file export is available in the desktop app.' }),
   playlistImport: (name, entries, userId) => isE() ? el().playlistImport(name, entries, userId || 'guest') : apiFetch('/playlists/import', { method: 'POST', body: { name, entries, userId: userId || 'guest' }}),
   playlistImportFile: (name, fileContent, fileType, userId) => isE() ? el().playlistImportFile(name, fileContent, fileType, userId || 'guest') : apiFetch('/playlists/import-file', { method:'POST', body:{name, fileContent, fileType, userId:userId||'guest'} }),
   previewExternalPlaylistImport: (payload) => isE() ? el().previewExternalPlaylistImport(payload) : apiFetch('/playlists/external-import-preview', { method:'POST', body:payload }),

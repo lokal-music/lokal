@@ -500,5 +500,5 @@ function getLibraryFolders(db, relativePath = '', search = '', rootOverride = ''
   }
 }
 
-module.exports = { findFolderArtwork, getLibraryFolders, resolveLibraryFolderTarget, getTrackRowsUnderFolder, renameLibraryFolders }
+module.exports = { findFolderArtwork, getLibraryFolders, resolveLibraryFolderTarget, getTrackRowsUnderFolder, renameLibraryFolders, configuredMusicRoots }
 

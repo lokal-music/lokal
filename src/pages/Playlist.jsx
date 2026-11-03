@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Heart, Music, Play, Shuffle, Trash2, Edit2, Check, X, RefreshCw, Image as ImageIcon, AlertCircle, Search, Sparkles, SlidersHorizontal, Share2 } from 'lucide-react'
+import { Heart, Music, Play, Shuffle, Trash2, Edit2, Check, X, RefreshCw, Image as ImageIcon, AlertCircle, Search, Sparkles, SlidersHorizontal, Share2, MoreHorizontal, Download } from 'lucide-react'
 import { usePlayerStore, useAppStore } from '../store/player'
 import TrackList from '../components/TrackList'
+import ContextMenu, { useContextMenu } from '../components/ContextMenu'
+import { showToast } from '../components/Toaster'
 import PlaylistCover from '../components/PlaylistCover'
 import { api } from '../api'
 import { describeRules, openSmartPlaylistEditor } from '../smartPlaylists'
@@ -24,6 +26,8 @@ const ICON_BUTTON = 'flex h-9 w-9 items-center justify-center rounded-full text-
 
 export default function Playlist() {
   const { t } = useTranslation()
+  const exportMenu = useContextMenu()
+  const [exportingPlaylist, setExportingPlaylist] = useState(false)
   const { id } = useParams()
   const nav = useNavigate()
   const { user } = useAppStore()
@@ -259,6 +263,32 @@ export default function Playlist() {
     })
   }
 
+  const exportPlaylistFile = async format => {
+    if (exportingPlaylist) return
+    setExportingPlaylist(true)
+    try {
+      const result = await api.exportPlaylistFile(id, user?.id, format)
+      if (result?.canceled) return
+      if (result?.error) { showToast(result.error); return }
+      const success = 'Exported ' + result.exported + ' tracks as ' + format.toUpperCase() + '.'
+      const notes = []
+      if (result.skipped) notes.push(result.skipped + ' track(s) skipped: missing files, non-local tracks, or different drives.')
+      if (result.portableRoots?.length) notes.push('Copy these music folders next to the playlist on your portable player: ' + result.portableRoots.join(', ') + '.')
+      if (result.externalRelative) notes.push('Some paths use ../ to reach a parent folder. Preserve that relative folder structure when copying.')
+      if (notes.length) window.alert([success, ...notes].join('\n\n'))
+      else showToast(success)
+    } catch (error) {
+      showToast(error?.message || 'Could not export playlist.')
+    } finally {
+      setExportingPlaylist(false)
+    }
+  }
+
+  const showExportMenu = event => exportMenu.open(event, [
+    { label: 'Export playlist as M3U8 (.m3u8)', icon: Download, onSelect: () => exportPlaylistFile('m3u8') },
+    { label: 'Export playlist as M3U (.m3u)', icon: Download, onSelect: () => exportPlaylistFile('m3u') },
+  ])
+
   const shuffleTracks = () => {
     if (!playableTracks.length) return
     const shuffled = [...playableTracks].sort(() => Math.random() - 0.5)
@@ -399,6 +429,18 @@ export default function Playlist() {
             <button type="button" onClick={sharePlaylist} disabled={!tracks.length} aria-label={t("Share as a picture")} title={t("Share as a picture")} className={ICON_BUTTON}>
               <Share2 size={17} />
             </button>
+            {api.isElectron && (
+              <button
+                type="button"
+                onClick={showExportMenu}
+                disabled={exportingPlaylist || !tracks.length}
+                aria-label={t('Playlist options')}
+                title={t('Playlist options')}
+                className={ICON_BUTTON}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+            )}
             {!isLiked && (
               <>
                 {!!ghostTracks.length && (
@@ -479,6 +521,7 @@ export default function Playlist() {
       {!isLiked && (
         <GhostSongsModal open={showResolveGhosts} onClose={() => setShowResolveGhosts(false)} ghostTracks={ghostTracks} playlistId={id} onChanged={load} />
       )}
+      <ContextMenu menu={exportMenu} />
     </div>
   )
 }
