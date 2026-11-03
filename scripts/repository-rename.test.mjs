@@ -31,7 +31,9 @@ test('existing default radio catalogue URLs migrate without touching personal li
 test('Google Cast project Pages path and operator documentation match new repo', () => {
   const workflow = read('.github/workflows/cast-receiver.yml')
   const docs = read('docs/CASTING.md')
+  const cast = read('electron/cast/appId.js')
   assert.match(workflow, /https:\/\/lokal-music\.github\.io\/Desktop\/receiver\//)
+  assert.match(cast, /https:\/\/lokal-music\.github\.io\/Desktop\/receiver\//)
   assert.match(docs, /https:\/\/lokal-music\.github\.io\/Desktop\/receiver\//)
   assert.match(docs, /Google Cast SDK Developer Console/)
   assert.doesNotMatch(docs, /github\.io\/lokal\/receiver\//)
