@@ -1,0 +1,31 @@
+name: Stations quality and metadata
+
+on:
+  pull_request:
+    paths:
+      - 'electron/radio/browser.js'
+      - 'electron/radio/metadata.js'
+      - 'src/pages/Stations.jsx'
+      - 'scripts/radio-browser.test.mjs'
+      - 'scripts/radio-metadata.test.mjs'
+      - '.github/workflows/stations-ci.yml'
+  push:
+    branches:
+      - feat/stations-radio-browser-hq-256
+
+permissions:
+  contents: read
+
+jobs:
+  stations-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify quality gates, stream deduplication and bounded metadata
+        run: node --test scripts/radio-browser.test.mjs scripts/radio-metadata.test.mjs
