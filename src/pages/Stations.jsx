@@ -28,6 +28,7 @@ const StationRow = memo(function StationRow({ station, onPlay, isFavorite, onFav
   const currentSong = usePlayerStore(s => s.currentTrack?.id === station.id ? s.currentTrack?.song_key : null)
   const track = usePlayerStore(s => s.currentTrack?.id === station.id ? s.currentTrack : null)
   const listed = useRadioStore(s => s.nowPlaying[station.id])
+  const streamInfo = useRadioStore(s => s.streamInfo[station.id])
   const rowRef = useRef(null)
   useEffect(() => {
     if (!api.radioStationMetadata || typeof IntersectionObserver === 'undefined') return undefined
@@ -58,20 +59,27 @@ const StationRow = memo(function StationRow({ station, onPlay, isFavorite, onFav
   }, [station.id, station.url])
   const now = currentSong ? [track?.artist, track?.title].filter(Boolean).join(' — ') :
     listed?.title ? [listed.artist, listed.title].filter(Boolean).join(' — ') : ''
+  const songArt = currentSong && track?.artwork_url || listed?.cover
+  const observed = selectedHere && streamInfo?.codec ? streamInfo : null
+  const streamQuality = observed?.bitrate
+    ? [observed.codec || station.codec, observed.bitrate + ' kbps'].filter(Boolean).join(' · ')
+    : quality(station)
   return (
     <div ref={rowRef} role="listitem" className={'group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ' + (selectedHere ? 'bg-accent/10' : 'hover:bg-elevated')}>
       <button type="button" onClick={() => onPlay(station)} title={playingHere ? 'Pause' : 'Play'} aria-label={(playingHere ? 'Pause ' : 'Play ') + station.title}
         className="relative h-12 w-12 shrink-0 rounded-xl bg-card overflow-hidden flex items-center justify-center focus-visible:outline focus-visible:outline-accent">
-        {station.icon ? <img src={station.icon} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display = 'none' }} /> : <Radio size={21} className="text-muted" />}
+        {(songArt || station.icon) ? <img src={songArt || station.icon} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" onError={e => { if (songArt && station.icon && e.currentTarget.src !== station.icon) e.currentTarget.src = station.icon; else e.currentTarget.style.display = 'none' }} /> : <Radio size={21} className="text-muted" />}
+        {songArt && station.icon && <img src={station.icon} alt="" loading="lazy" decoding="async" className="absolute bottom-0 right-0 h-4 w-4 rounded bg-card object-cover ring-1 ring-card" />}
         <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">
           {playingHere ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
         </span>
       </button>
       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onPlay(station)}>
         <p className={'truncate text-sm font-semibold ' + (selectedHere ? 'text-accent' : 'text-text')}>{station.title}</p>
-        <p title={now || undefined} className="truncate text-xs text-muted mt-0.5">{now || [station.country, station.genre].filter(Boolean).join(' · ') || 'Live broadcast'}</p>
+        <p title={now || undefined} className="truncate text-xs text-muted mt-0.5">{now || 'Current track unavailable'}</p>
+        <p className="truncate text-[11px] text-muted mt-0.5 md:hidden">{streamQuality}</p>
       </button>
-      <span className="hidden md:block shrink-0 text-xs text-muted tabular-nums w-36 text-right">{quality(station)}</span>
+      <span className="hidden md:block shrink-0 text-xs text-muted tabular-nums w-36 text-right">{streamQuality}</span>
       <button type="button" onClick={() => onFavorite(station)} aria-label={(isFavorite ? 'Remove ' : 'Favorite ') + station.title}
         className={'p-2 rounded-full hover:bg-card focus-visible:outline focus-visible:outline-accent ' + (isFavorite ? 'text-accent' : 'text-muted')}>
         <Heart size={19} fill={isFavorite ? 'currentColor' : 'none'} />
