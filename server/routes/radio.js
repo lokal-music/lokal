@@ -4,6 +4,7 @@ const router = require('express').Router()
 const { getCatalog, loadAndSave } = require('../../electron/ipc/radio')
 const { nowPlaying } = require('../../electron/radio/nowPlaying')
 const { browseStations } = require('../../electron/radio/browser')
+const { visibleStationMetadata } = require('../../electron/radio/metadata')
 
 router.get('/catalog', (req, res) => res.json(getCatalog()))
 
@@ -14,6 +15,10 @@ router.get('/browse', async (req, res) => {
 
 router.post('/catalog', async (req, res) => {
   res.json(await loadAndSave(req.body?.url, { publicOnly: true }).catch(error => ({ ok: false, errors: [{ path: '', code: 'network', detail: String(error?.message || error) }] })))
+})
+
+router.post('/metadata', async (req, res) => {
+  res.json(await visibleStationMetadata(req.body?.station).catch(() => null))
 })
 
 router.post('/now-playing', async (req, res) => {
