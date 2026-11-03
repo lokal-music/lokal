@@ -9,7 +9,7 @@ export const DEFAULT_RADIO_CATALOG_URL = 'https://raw.githubusercontent.com/loka
 
 /** Move only the former built-in catalogue; custom station lists stay intact. */
 export function resolveRadioCatalogUrl(url) {
-  if (!url || /^https:\/\/raw\.githubusercontent\.com\/sipbuu\/lokal\/(?:refs\/heads\/)?main\/radios\.json$/.test(url)) {
+  if (!url || /^https:\/\/raw\.githubusercontent\.com\/(?:sipbuu\/lokal|lokal-music\/lokal)\/(?:refs\/heads\/)?main\/radios\.json$/.test(url)) {
     return DEFAULT_RADIO_CATALOG_URL
   }
   return url
