@@ -69,7 +69,6 @@ function buildM3u(tracks, playlistFile, options = {}) {
       entry = relative
     } else if (root) {
       entry = root.label + '/' + pathApi.relative(root.root, original)
-      usedRoots.add(root.label)
     } else if (relative && !pathApi.isAbsolute(relative)) {
       // Still genuinely relative and useful when the directory tree is copied.
       entry = relative
@@ -84,9 +83,9 @@ function buildM3u(tracks, playlistFile, options = {}) {
     if (entry.startsWith('#')) entry = './' + entry
     if (/[\r\n]/.test(entry)) {
       summary.skippedUnusable++
-      usedRoots.delete(root?.label)
       continue
     }
+    if (root && !inside(relative, pathApi)) usedRoots.add(root.label)
     lines.push(entry)
     summary.exported++
   }
