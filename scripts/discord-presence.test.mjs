@@ -25,7 +25,7 @@ test('listening payload has real progress, source cover, and both buttons', () =
   assert.equal(activity.assets.large_image, 'https://covers.example/album.jpg')
   assert.deepEqual(activity.buttons, [
     { label: 'Search on YouTube', url: 'https://www.youtube.com/results?search_query=Artist%20Song' },
-    { label: 'View App on GitHub', url: 'https://github.com/lokal-music/lokal' },
+    { label: 'View App on GitHub', url: 'https://github.com/lokal-music/Desktop' },
   ])
 })
 
@@ -209,7 +209,7 @@ test('real discord-rpc client sends Listening and buttons over the IPC transport
   assert.equal(frame.args.activity.type, 2)
   assert.deepEqual(frame.args.activity.buttons, [
     { label: 'Search on YouTube', url: 'https://www.youtube.com/results?search_query=Artist%20Song' },
-    { label: 'View App on GitHub', url: 'https://github.com/lokal-music/lokal' },
+    { label: 'View App on GitHub', url: 'https://github.com/lokal-music/Desktop' },
   ])
   assert.equal(frame.args.activity.timestamps.end - frame.args.activity.timestamps.start, 240000)
   await call('disconnect')
@@ -273,7 +273,7 @@ test('YouTube search retains long song names within Discord URL limits', () => {
   const track = { artist: 'An Artist', title: 'A Song Title That Is Longer Than Thirty Two Characters' }
   const activity = buildActivity(track, true)
   assert.equal(new URL(activity.buttons[0].url).searchParams.get('search_query'), `${track.artist} ${track.title}`)
-  assert.equal(activity.buttons[1].url, 'https://github.com/lokal-music/lokal')
+  assert.equal(activity.buttons[1].url, 'https://github.com/lokal-music/Desktop')
   const unicode = buildActivity({ artist: '🎵'.repeat(100), title: '長い曲名' }, true)
   assert.ok(unicode.buttons[0].url.length <= 512)
 })
