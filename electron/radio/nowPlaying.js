@@ -182,12 +182,19 @@ function pick(data, path) {
 // A list answering for several stations (one JSON for all of a network's
 // radios): `match` is "path=value", the entry whose `path` is `value`.
 function selectEntry(data, match) {
-  if (!Array.isArray(data) || !match) return data
+  if (!match) return data
+  // Some broadcasters (notably Radio Nova) return { radios: [...] }
+  // rather than an array at the root. The mobile adapter already supports
+  // both shapes; the desktop adapter previously read an empty currentTrack.
+  const entries = Array.isArray(data) ? data
+    : Array.isArray(data?.radios) ? data.radios
+      : null
+  if (!entries) return data
   const at = String(match).indexOf('=')
-  if (at < 1) return data
+  if (at < 1) return null // never guess the first radio on a shared feed
   const path = match.slice(0, at).trim()
   const value = match.slice(at + 1).trim()
-  return data.find(item => str(pick(item, path)) === value) ?? null
+  return entries.find(item => str(pick(item, path)) === value) ?? null
 }
 
 function fromJson(data, api) {

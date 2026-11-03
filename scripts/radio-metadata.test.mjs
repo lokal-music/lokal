@@ -121,3 +121,84 @@ test('generic resolver reads Icecast first, falls back to AzuraCast then SHOUTca
     cover:'https://example.com/art.jpg'})
   assert.deepEqual(urls,['/status-json.xsl','/api/nowplaying'])
 })
+
+
+test('Nova JSON metadata wrapped in a radios array reaches desktop, like mobile', async () => {
+  const station = {
+    id: 'rb:nova-wrapped', title: 'Nova Danse',
+    url: 'https://nova-dance.ice.infomaniak.ch/nova-dance-256.aac',
+  }
+  const fakeFetch = async url => ({
+    ok: true, status: 200, headers: { get: () => null },
+    json: async () => ({ radios: [
+      { radio: { code: 'nova-soul' },
+        currentTrack: { artist: 'Other Artist', title: 'Other Track' } },
+      { radio: { code: 'nova-danse' },
+        currentTrack: { artist: 'Correct Artist', title: 'Correct Track',
+          image: 'https://www.nova.fr/correct-cover.jpg', duration: 222 } },
+    ] }),
+  })
+  const found = await visibleStationMetadata(station, { fetchImpl: fakeFetch })
+  assert.deepEqual(found, {
+    artist: 'Correct Artist', title: 'Correct Track',
+    cover: 'https://www.nova.fr/correct-cover.jpg', duration: 222,
+  })
+})
+
+
+test('Icecast prioritizes the actual song over the station display title', () => {
+  const payload = { icestats: { source: {
+    listenurl: 'https://radio.example.test/live',
+    title: 'Radio Station Name',
+    song: 'Live Artist - Live Track',
+  } } }
+  assert.deepEqual(parseIcecast(payload, 'https://radio.example.test/live'),
+    { artist: 'Live Artist', title: 'Live Track' })
+  assert.equal(parseIcecast(payload, 'https://radio.example.test/another'), null)
+})
+
+test('metadata endpoint follows public HTTP-to-HTTPS redirect and preserves mount', async () => {
+  const calls = []
+  const mockFetch = async url => {
+    calls.push(url)
+    if (url === 'http://public-radio.example.test/status-json.xsl') {
+      return { status: 301, ok: false, headers: {
+        get: key => key === 'location' ? 'https://public-radio.example.test/status-json.xsl' : null,
+      } }
+    }
+    if (url === 'https://public-radio.example.test/status-json.xsl') {
+      return { status: 200, ok: true, headers: { get: () => null },
+        text: async () => JSON.stringify({ icestats: { source: {
+          listenurl: 'https://public-radio.example.test/live',
+          song: 'Current Artist - Current Song',
+        } } }),
+      }
+    }
+    throw new Error('Unexpected request')
+  }
+  const found = await visibleStationMetadata({
+    id: 'rb:redirect', url: 'http://public-radio.example.test/live',
+  }, { fetchImpl: mockFetch })
+  assert.deepEqual(found, { artist: 'Current Artist', title: 'Current Song' })
+  assert.deepEqual(calls, [
+    'http://public-radio.example.test/status-json.xsl',
+    'https://public-radio.example.test/status-json.xsl',
+  ])
+})
+
+test('metadata redirects cannot target private hosts', async () => {
+  const calls = []
+  const mockFetch = async url => {
+    calls.push(url)
+    return { status: 302, ok: false, headers: {
+      get: () => 'http://127.0.0.1:9999/private',
+    } }
+  }
+  const found = await visibleStationMetadata({
+    id: 'rb:private-redirect', url: 'https://stream.example.test/live',
+  }, { fetchImpl: mockFetch })
+  assert.equal(found, null)
+  // Fallback endpoints may also be checked on the original public host;
+  // none may follow the private redirect.
+  assert.ok(calls.every(url => !url.includes('127.0.0.1')))
+})

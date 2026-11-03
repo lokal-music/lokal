@@ -8,6 +8,7 @@
 // clean before an ordinary song takes the element again.
 
 import IcecastMetadataPlayer from 'icecast-metadata-player'
+import { stationMetadataTypes, streamTitleFromMetadata } from './streamMetadata.mjs'
 
 let session = null
 let generation = 0
@@ -76,7 +77,7 @@ export async function startRadio(el, track, { bufferSec = 3, autoplay = true, ha
   el.loop = false
   const player = new IcecastMetadataPlayer(track.stream_url, {
     audioElement: el,
-    metadataTypes: ['icy'],
+    metadataTypes: stationMetadataTypes(track.stream_url, track.station?.codec),
     bufferLength: Math.max(0, Number(bufferSec) || 0),
     retryTimeout: 60,
     retryDelayMin: 1,
@@ -88,8 +89,8 @@ export async function startRadio(el, track, { bufferSec = 3, autoplay = true, ha
     onPlay: () => { if (live()) { handlers.onBuffering?.(false); log(`playing (${player.playbackMethod || '?'}, buffer ${bufferSec}s)`) } },
     onMetadata: (metadata) => {
       if (!live()) return
-      const text = metadata?.StreamTitle
-      if (text != null) handlers.onTitle?.(String(text), el.currentTime)
+      const title = streamTitleFromMetadata(metadata)
+      if (title) handlers.onTitle?.(title, el.currentTime)
     },
     onCodecUpdate: (info) => {
       if (!live()) return
