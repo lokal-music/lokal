@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n'
 import { navigateToTrackAlbum } from '../playbackContext'
 import { isOnlineTrack } from '../onlineBrowse'
 import { isStationTrack } from '../radio/stations'
+import { useRadioStore } from '../store/radio'
 import { resolveStationSong } from '../radio/stationSong'
 import { showToast } from './Toaster'
 import Waveform from './Waveform'
@@ -98,6 +99,7 @@ export default function PlayerBar() {
     sleepTimerMinutes, sleepTimerEndTime, setSleepTimer, cancelSleepTimer,
     toggleMiniPlayer,
   })))
+  const stationInfo = useRadioStore(s => s.streamInfo[currentTrack?.station?.id || currentTrack?.id])
   const { user, openAddToPlaylist } = useAppStore()
   const [likeAnim, setLikeAnim] = useState(false)
   const [showAudioPipeline, setShowAudioPipeline] = useState(false)
@@ -314,6 +316,11 @@ export default function PlayerBar() {
     ? { info: TIERS[qualityTier], format: nativeAtmos ? 'E-AC-3 JOC' : formatLabel(currentTrack) }
     : null
   const qualityDisplay = quality && qualityTagLabel(currentTrack, qualityTier, fullResolutionTags)
+  const displayedRadioCodec = stationInfo?.codec || currentTrack?.station?.codec || ''
+  const displayedRadioBitrate = Number(stationInfo?.bitrate) || Number(currentTrack?.station?.bitrate) || 0
+  const stationQuality = station && (displayedRadioCodec || displayedRadioBitrate)
+    ? [displayedRadioCodec, currentTrack?.station?.lossless ? 'Lossless' : displayedRadioBitrate > 0 ? displayedRadioBitrate + ' kbps' : ''].filter(Boolean).join(' · ')
+    : ''
   const nativeAtmosHint = nativeAtmos
     ? isBuffering || !isPlaying
       ? 'Dolby Atmos source selected; native output not yet playing.'
@@ -402,6 +409,12 @@ export default function PlayerBar() {
                     <span className="mt-1 block truncate text-[9px] font-display uppercase tracking-wider text-accent"
                       title={t('Live radio station: {station}', { station: currentTrack.station?.title || currentTrack.title })}>
                       {t('Live radio')} · {currentTrack.station?.title || currentTrack.title}
+                    </span>
+                  )}
+                  {station && stationQuality && (
+                    <span className="mt-0.5 block truncate text-[10px] font-medium text-muted"
+                      title={stationInfo?.codec ? 'Codec reported by the live stream; bitrate may be directory-reported.' : 'Directory-reported stream quality; actual bitrate may differ.'}>
+                      {stationQuality}
                     </span>
                   )}
                 </div>
