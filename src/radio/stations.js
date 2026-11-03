@@ -27,7 +27,7 @@ export function stationTrack(station, catalogTitle = '') {
     kind: 'station',
     file_path: `${STATION_PATH_PREFIX}${station.url}`,
     stream_url: station.url,
-    station: { id: station.id, title: station.title, url: station.url, icon: station.icon || null, genre: station.genre || '', description: station.description || '', history: station.history || '', api: station.api || null },
+    station: { id: station.id, title: station.title, url: station.url, icon: station.icon || null, genre: station.genre || '', description: station.description || '', history: station.history || '', api: station.api || null, codec: station.codec || '', bitrate: Number(station.bitrate) || 0, lossless: station.lossless === true },
     catalog_title: catalogTitle,
     title: station.title,
     artist: catalogTitle || '',

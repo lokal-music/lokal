@@ -257,4 +257,4 @@ async function nowPlayingFromApi(api, { fetchImpl = fetch, publicOnly = false } 
   return null
 }
 
-module.exports = { nowPlaying, fromAzuracast, fromRadioRecord, fromLautfm, fromJson, pick, splitText }
+module.exports = { nowPlaying, coverFor, fromAzuracast, fromRadioRecord, fromLautfm, fromJson, pick, splitText }

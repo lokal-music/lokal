@@ -81,18 +81,37 @@ function stopApiPolling() {
 function startApiPolling(track) {
   stopApiPolling()
   const stationApi = track.station?.api
-  if (!stationApi || !api.radioNowPlaying) return
+  const station = track.station
+  const metadataLookup = stationApi && api.radioNowPlaying
+    ? () => api.radioNowPlaying(stationApi)
+    : api.radioStationMetadata && station?.id?.startsWith('rb:')
+      ? () => api.radioStationMetadata(station)
+      : null
+  if (!metadataLookup) return
   const mine = { trackId: track.id, timer: null }
   poll = mine
   const tick = async () => {
     if (poll !== mine) return
     const current = usePlayerStore.getState().currentTrack
     if (!current || current.id !== mine.trackId || !isStationTrack(current)) { stopApiPolling(); return }
-    const info = await api.radioNowPlaying(stationApi).catch(() => null)
+    const info = await metadataLookup().catch(() => null)
     if (poll !== mine) return
     const now = usePlayerStore.getState().currentTrack
-    if (info?.title && now?.id === mine.trackId && !(now.song_key && sameSong(info, now))) {
-      await handleStationTitle(mine.trackId, info.artist ? `${info.artist} - ${info.title}` : info.title, NaN)
+    if (info?.title && now?.id === mine.trackId) {
+      if (!now.song_key || !sameSong(info, now)) {
+        await handleStationTitle(mine.trackId, info.title, NaN, info)
+      } else if (info.cover && info.cover !== now.artwork_url) {
+        // Some streams announce their title first, then the broadcaster
+        // publishes matching artwork. Update the active track without
+        // restarting audio or replacing any queue entry.
+        usePlayerStore.getState().patchStationTrack(mine.trackId, {
+          artwork_url: info.cover,
+          ...(info.artist && !now.artist ? { artist: info.artist } : {}),
+        })
+        useRadioStore.getState().setNowPlaying(now.station?.id || now.id, {
+          artist: info.artist || now.artist, title: info.title, cover: info.cover,
+        })
+      }
     }
     if (poll === mine) mine.timer = setTimeout(tick, API_POLL_MS)
   }
@@ -118,11 +137,13 @@ export function resetStationDisplay(track) {
 }
 
 /** The stream's title changed (heard now, at `audioTime` on the element). */
-export async function handleStationTitle(trackId, text, audioTime) {
+export async function handleStationTitle(trackId, text, audioTime, broadcasterInfo = null) {
   const current = usePlayerStore.getState().currentTrack
   if (!current || current.id !== trackId || !isStationTrack(current)) return
   const station = current.station || {}
-  const song = parseStreamTitle(text, station.title)
+  const song = broadcasterInfo?.title
+    ? { artist: broadcasterInfo.artist || '', title: broadcasterInfo.title }
+    : parseStreamTitle(text, station.title)
   if (!song) return
   const joinedMidSong = !Number.isFinite(audioTime) || audioTime < CONNECT_WINDOW_S
   // The same title again (a reconnect, a repeated block): nothing changed,
@@ -143,21 +164,21 @@ export async function handleStationTitle(trackId, text, audioTime) {
     song_key: key, song_clock_base: Number.isFinite(audioTime) ? audioTime : null, song_clock_known: !joinedMidSong,
     song_duration: 0, song_lyrics: null, song_year: null,
   })
-  useRadioStore.getState().setNowPlaying(station.id, { artist: song.artist, title: song.title })
+  useRadioStore.getState().setNowPlaying(station.id, { artist: song.artist, title: song.title, cover: broadcasterInfo?.cover || null })
 
   let cover = coverCache.get(key)
   let info = null
   if (cover === undefined) {
-    // The cover search starts alongside the station's API, used if the API has none.
-    const searched = searchCover(song)
-    info = await stationApiSong(station.api, song, isCurrent)
+    // Never perform an extra artwork lookup if the broadcaster already gave
+    // the exact current track and its cover.
+    info = broadcasterInfo || await stationApiSong(station.api, song, isCurrent)
     if (!isCurrent()) return
-    cover = info?.cover || await searched
+    cover = info?.cover || await searchCover(song)
     if (!isCurrent()) return
     if (cover && !(await preload(cover))) cover = null
     rememberCover(key, cover || null)
-  } else if (station.api) {
-    info = await stationApiSong(station.api, song, isCurrent)
+  } else {
+    info = broadcasterInfo || (station.api ? await stationApiSong(station.api, song, isCurrent) : null)
   }
   if (!isCurrent()) return
 
