@@ -2,6 +2,37 @@
 // audio stream to inspect another station's current track.
 const { isPublicHttpUrl } = require('../online/publicUrl')
 
+const { nowPlaying } = require('./nowPlaying')
+
+const NOVA_METADATA_URL = 'https://www.nova.fr/radios-data/www.nova.fr/all.json'
+// These are the broadcaster's official stream hosts, carried over from
+// Lokal's original radios.json catalog. Do not infer an API from a name alone.
+const NOVA_HOSTS = {
+  'radionova.ice.infomaniak.ch': 'radio-nova',
+  'nova-vnt.ice.infomaniak.ch': 'nova-classics',
+  'nova-ln.ice.infomaniak.ch': 'nova-lanuit',
+  'nova-dance.ice.infomaniak.ch': 'nova-danse',
+  'nova-odn.ice.infomaniak.ch': 'nova-hip-hop',
+  'nova-reggae.ice.infomaniak.ch': 'nova-reggae',
+  'nova-soul.ice.infomaniak.ch': 'nova-soul',
+  'nova-nouvo.ice.infomaniak.ch': 'nouvo-nova',
+  'novalaplage.ice.infomaniak.ch': 'nova-la-plage',
+}
+
+function broadcasterApiForStation(station) {
+  try {
+    const stream = new URL(station?.url)
+    const code = NOVA_HOSTS[stream.hostname.toLowerCase()]
+    if (!code) return null
+    return {
+      type: 'json', url: NOVA_METADATA_URL,
+      match: 'radio.code=' + code,
+      artist: 'currentTrack.artist', title: 'currentTrack.title',
+      cover: 'currentTrack.image', duration: 'currentTrack.duration',
+    }
+  } catch { return null }
+}
+
 const CACHE_SUCCESS_MS = 60000
 const CACHE_FAILURE_MS = 5 * 60000
 const MAX_CONCURRENT = 3
@@ -70,20 +101,24 @@ async function fetchStatus(url, fetchImpl = globalThis.fetch) {
 
 async function visibleStationMetadata(station, { fetchImpl = globalThis.fetch } = {}) {
   if (!station?.id?.startsWith('rb:')) return null
-  const target = statusUrl(station.url)
+  const provider = broadcasterApiForStation(station)
+  const target = provider ? 'broadcaster:' + station.id : statusUrl(station.url)
   if (!target) return null
+  const unpack = value => provider ? value : parseIcecast(value, station.url)
   const entry = cache.get(target)
   if (fetchImpl === globalThis.fetch && entry && Date.now() < entry.until) {
-    return parseIcecast(await entry.pending, station.url)
+    return unpack(await entry.pending)
   }
-  const pending = withSlot(() => fetchStatus(target, fetchImpl)).catch(() => null)
+  const pending = withSlot(() => provider
+    ? nowPlaying(provider, { fetchImpl, publicOnly: true })
+    : fetchStatus(target, fetchImpl)).catch(() => null)
   if (fetchImpl === globalThis.fetch) {
     const stored = { until: Date.now() + CACHE_FAILURE_MS, pending }
     cache.set(target, stored)
     pending.then(data => { stored.until = Date.now() + (data ? CACHE_SUCCESS_MS : CACHE_FAILURE_MS) })
     if (cache.size > 200) cache.delete(cache.keys().next().value)
   }
-  return parseIcecast(await pending, station.url)
+  return unpack(await pending)
 }
 
-module.exports = { parseIcecast, statusUrl, visibleStationMetadata }
+module.exports = { parseIcecast, statusUrl, broadcasterApiForStation, visibleStationMetadata }
