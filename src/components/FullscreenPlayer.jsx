@@ -282,10 +282,17 @@ export default function FullscreenPlayer() {
   const nav = useNavigate()
   const openFullscreenAlbum = async (target = currentTrack) => {
     if (!target) return
+    // Both resolvers navigate via the supplied callback only after an album
+    // is found. Close the overlay immediately before that navigation, never
+    // when a radio lookup fails (otherwise the user loses their player).
+    const navigateFromFullscreen = (...args) => {
+      toggleFullscreen()
+      nav(...args)
+    }
     if (isStationTrack(target)) {
-      if (!await navigateToRadioAlbum(nav, target)) showToast(t("Couldn't find this song's album"))
+      if (!await navigateToRadioAlbum(navigateFromFullscreen, target)) showToast(t("Couldn't find this song's album"))
     } else {
-      navigateToTrackAlbum(nav, target)
+      navigateToTrackAlbum(navigateFromFullscreen, target)
     }
   }
   const wordSync = wordSyncEnabled()
