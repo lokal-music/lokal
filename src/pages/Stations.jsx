@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from 'react'
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Globe2, Heart, Loader2, Music2, Pause, Play, Radio, RefreshCw, Search } from 'lucide-react'
 import { useTranslation } from '../i18n'
 import { usePageReady } from '../pageCache'
@@ -28,10 +28,38 @@ const StationRow = memo(function StationRow({ station, onPlay, isFavorite, onFav
   const currentSong = usePlayerStore(s => s.currentTrack?.id === station.id ? s.currentTrack?.song_key : null)
   const track = usePlayerStore(s => s.currentTrack?.id === station.id ? s.currentTrack : null)
   const listed = useRadioStore(s => s.nowPlaying[station.id])
+  const rowRef = useRef(null)
+  useEffect(() => {
+    if (!api.radioStationMetadata || typeof IntersectionObserver === 'undefined') return undefined
+    let visible = false
+    let disposed = false
+    let pending = false
+    let interval
+    const refresh = async () => {
+      if (!visible || pending) return
+      pending = true
+      try {
+        const info = await api.radioStationMetadata({ id: station.id, url: station.url })
+        if (!disposed && info?.title) useRadioStore.getState().setNowPlaying(station.id, info)
+      } catch {} finally { pending = false }
+    }
+    const observer = new IntersectionObserver(entries => {
+      const nowVisible = entries.some(entry => entry.isIntersecting)
+      if (nowVisible === visible) return
+      visible = nowVisible
+      clearInterval(interval)
+      if (visible) {
+        refresh()
+        interval = setInterval(refresh, 60000)
+      }
+    }, { rootMargin: '0px 0px 120px 0px' })
+    if (rowRef.current) observer.observe(rowRef.current)
+    return () => { disposed = true; clearInterval(interval); observer.disconnect() }
+  }, [station.id, station.url])
   const now = currentSong ? [track?.artist, track?.title].filter(Boolean).join(' — ') :
     listed?.title ? [listed.artist, listed.title].filter(Boolean).join(' — ') : ''
   return (
-    <div role="listitem" className={'group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ' + (selectedHere ? 'bg-accent/10' : 'hover:bg-elevated')}>
+    <div ref={rowRef} role="listitem" className={'group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ' + (selectedHere ? 'bg-accent/10' : 'hover:bg-elevated')}>
       <button type="button" onClick={() => onPlay(station)} title={playingHere ? 'Pause' : 'Play'} aria-label={(playingHere ? 'Pause ' : 'Play ') + station.title}
         className="relative h-12 w-12 shrink-0 rounded-xl bg-card overflow-hidden flex items-center justify-center focus-visible:outline focus-visible:outline-accent">
         {station.icon ? <img src={station.icon} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" onError={e => { e.currentTarget.style.display = 'none' }} /> : <Radio size={21} className="text-muted" />}
