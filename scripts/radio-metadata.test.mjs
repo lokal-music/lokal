@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const { parseIcecast, statusUrl, visibleStationMetadata } = require('../electron/radio/metadata.js')
+const { parseIcecast, statusUrl, broadcasterApiForStation, visibleStationMetadata } = require('../electron/radio/metadata.js')
 
 test('status lookup uses a host Icecast JSON endpoint, not an audio URL', () => {
   assert.equal(statusUrl('https://music.example.test:8443/live.mp3'),
@@ -41,4 +41,33 @@ test('station metadata reads bounded broadcaster JSON and skips private endpoint
   }, { fetchImpl })
   assert.equal(internal, null)
   assert.equal(requests, 1)
+})
+
+
+test('Nova Danse gets the official broadcaster feed without requiring ICY metadata', async () => {
+  const station = {
+    id: 'rb:nova-dance-uuid',
+    title: 'Nova Danse',
+    url: 'https://nova-dance.ice.infomaniak.ch/nova-dance-256.aac',
+  }
+  const api = broadcasterApiForStation(station)
+  assert.equal(api.url, 'https://www.nova.fr/radios-data/www.nova.fr/all.json')
+  assert.equal(api.match, 'radio.code=nova-danse')
+  assert.equal(broadcasterApiForStation({ ...station, url: 'https://other-radio.example/live' }), null)
+  const mockFetch = async url => {
+    assert.equal(url, api.url)
+    return {
+      ok: true, status: 200, headers: { get: () => null },
+      json: async () => [
+        { radio: { code: 'radio-nova' }, currentTrack: { artist: 'Wrong', title: 'Song' } },
+        { radio: { code: 'nova-danse' }, currentTrack: {
+          artist: 'Dance Artist', title: 'Dance Track',
+          image: 'https://www.nova.fr/media/dance-cover.jpg', duration: 215,
+        } },
+      ],
+    }
+  }
+  const track = await visibleStationMetadata(station, { fetchImpl: mockFetch })
+  assert.deepEqual(track, { artist: 'Dance Artist', title: 'Dance Track',
+    cover: 'https://www.nova.fr/media/dance-cover.jpg', duration: 215 })
 })
