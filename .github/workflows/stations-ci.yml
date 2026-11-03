@@ -7,6 +7,14 @@ on:
       - 'electron/radio/metadata.js'
       - 'electron/radio/nowPlaying.js'
       - 'src/radio/radioSession.js'
+      - 'src/radio/stationAlbum.js'
+      - 'src/components/PlayerBar.jsx'
+      - 'src/components/RightSidebar.jsx'
+      - 'src/components/FullscreenPlayer.jsx'
+      - 'src/playbackContext.js'
+      - 'src/radio/stationSong.js'
+      - 'scripts/radio-song.test.mjs'
+      - 'scripts/radio-album-navigation.test.mjs'
       - 'src/radio/streamMetadata.mjs'
       - 'src/pages/Stations.jsx'
       - 'scripts/radio-browser.test.mjs'
@@ -33,4 +41,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verify quality gates, stream deduplication and bounded metadata
-        run: node --test scripts/radio-browser.test.mjs scripts/radio-metadata.test.mjs scripts/radio-stream-metadata.test.mjs
+        run: node --test scripts/radio-browser.test.mjs scripts/radio-metadata.test.mjs scripts/radio-stream-metadata.test.mjs scripts/radio-song.test.mjs scripts/radio-album-navigation.test.mjs
