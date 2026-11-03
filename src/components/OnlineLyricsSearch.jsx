@@ -26,7 +26,7 @@ export default function OnlineLyricsSearch({ query }) {
       try {
         const response = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(q.slice(0, 120))}`, {
           signal: abort.signal,
-          headers: { Accept: 'application/json', 'Lrclib-Client': 'Lokal desktop (https://github.com/lokal-music/lokal)' },
+          headers: { Accept: 'application/json', 'Lrclib-Client': 'Lokal desktop (https://github.com/lokal-music/Desktop)' },
         })
         if (!response.ok) throw new Error(response.status === 429
           ? 'Lyrics provider is rate-limiting searches. Try later.'
