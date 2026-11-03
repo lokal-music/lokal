@@ -46,7 +46,7 @@ test('project navigation links use canonical repo and neither old project URL', 
   ]
   for (const path of files) {
     const data = read(path)
-    assert.doesNotMatch(data, /github\.com\/lokal-music\/lokal(?:\/|['")]|\s)/,
+    assert.doesNotMatch(data, /github\.com\/lokal-music\/lokal(?![-A-Za-z0-9])/,
       path + ' must use the current repository link')
   }
 })
