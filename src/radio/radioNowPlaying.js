@@ -97,8 +97,21 @@ function startApiPolling(track) {
     const info = await metadataLookup().catch(() => null)
     if (poll !== mine) return
     const now = usePlayerStore.getState().currentTrack
-    if (info?.title && now?.id === mine.trackId && !(now.song_key && sameSong(info, now))) {
-      await handleStationTitle(mine.trackId, info.title, NaN, info)
+    if (info?.title && now?.id === mine.trackId) {
+      if (!now.song_key || !sameSong(info, now)) {
+        await handleStationTitle(mine.trackId, info.title, NaN, info)
+      } else if (info.cover && info.cover !== now.artwork_url) {
+        // Some streams announce their title first, then the broadcaster
+        // publishes matching artwork. Update the active track without
+        // restarting audio or replacing any queue entry.
+        usePlayerStore.getState().patchStationTrack(mine.trackId, {
+          artwork_url: info.cover,
+          ...(info.artist && !now.artist ? { artist: info.artist } : {}),
+        })
+        useRadioStore.getState().setNowPlaying(now.station?.id || now.id, {
+          artist: info.artist || now.artist, title: info.title, cover: info.cover,
+        })
+      }
     }
     if (poll === mine) mine.timer = setTimeout(tick, API_POLL_MS)
   }
