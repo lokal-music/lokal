@@ -44,9 +44,10 @@ test('offline on first run: the default link is still what Settings shows, and i
 
 
 test('a saved former default keeps cached stations and refreshes from the transferred repo', async () => {
-  for (const branch of ['main', 'refs/heads/main']) {
+  for (const origin of ['sipbuu/lokal', 'lokal-music/lokal']) {
+    for (const branch of ['main', 'refs/heads/main']) {
     reset()
-    const oldUrl = `https://raw.githubusercontent.com/sipbuu/lokal/${branch}/radios.json`
+    const oldUrl = `https://raw.githubusercontent.com/${origin}/${branch}/radios.json`
     const cached = { stations: [{ title: 'Cached Nova' }] }
     const loaded = []
     api.radioGetCatalog = async () => ({ url: oldUrl, catalog: cached, updatedAt: 5 })
@@ -61,6 +62,7 @@ test('a saved former default keeps cached stations and refreshes from the transf
     await useRadioStore.getState().loadCatalog(oldUrl)
     assert.deepEqual(loaded, [DEFAULT_RADIO_CATALOG_URL])
     assert.equal(useRadioStore.getState().url, DEFAULT_RADIO_CATALOG_URL)
+    }
   }
 })
 
