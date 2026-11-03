@@ -7,7 +7,7 @@
 // Pages by .github/workflows/cast-receiver.yml. After a transfer, also update
 // the existing Google Cast console registration (docs/CASTING.md); the TV
 // resolves this URL through LOKAL_CAST_APP_ID, not this constant.
-const LOKAL_RECEIVER_URL = 'https://lokal-music.github.io/lokal/receiver/'
+const LOKAL_RECEIVER_URL = 'https://lokal-music.github.io/Desktop/receiver/'
 const LOKAL_CAST_APP_ID = '2060B9B3'
 
 module.exports = { LOKAL_CAST_APP_ID, LOKAL_RECEIVER_URL }
