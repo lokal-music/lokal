@@ -88,15 +88,19 @@ async function browseStations(params = {}, { fetchImpl = globalThis.fetch } = {}
     ])
     const seen = new Set()
     const stations = [...lossless, ...lossy].filter(eligibleStation).map(toStation)
+      .sort((a, b) => Number(b.lossless) - Number(a.lossless) || b.bitrate - a.bitrate || b.votes - a.votes)
       .filter(station => {
-        // Keep unique UUIDs and URLs; don't show several entries for the same stream.
-        const key = station.url.replace(/\/$/, '').toLowerCase()
-        if (seen.has(station.id) || seen.has(key)) return false
+        // Collapse alternate directory entries for the same broadcaster, taking
+        // the highest-quality compatible stream first.
+        const urlKey = 'url:' + station.url.replace(/\/$/, '').toLowerCase()
+        const nameKey = 'name:' + station.countrycode.toUpperCase() + ':' +
+          station.title.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ')
+        if (seen.has(station.id) || seen.has(urlKey) || seen.has(nameKey)) return false
         seen.add(station.id)
-        seen.add(key)
+        seen.add(urlKey)
+        seen.add(nameKey)
         return true
       })
-      .sort((a, b) => Number(b.lossless) - Number(a.lossless) || b.bitrate - a.bitrate || b.votes - a.votes)
     return { stations, hasMore: lossy.length === Math.max(1, Math.min(80, Number(params.limit) || 60)), nextOffset: Math.max(0, Number(params.offset) || 0) + lossy.length, source: 'Radio Browser', minBitrate: MIN_BITRATE }
   })()
   if (fetchImpl === globalThis.fetch) {
