@@ -77,7 +77,10 @@ function parseIcecast(data, streamUrl) {
   // Do not misattribute a different mount on a shared radio host.
   const source = matching || (rows.length === 1 ? rows[0] : null)
   if (!source) return null
-  const value = String(source.title || source.song || '').trim().slice(0, 300)
+  // Icecast implementations disagree about whether "title" is the
+  // station's display name or the current recording. Prefer explicit
+  // current-song fields, otherwise retain the existing title fallback.
+  const value = String(source.song || source.yp_currently_playing || source.title || '').trim().slice(0, 300)
   if (!value || /^unknown|^offline$/i.test(value)) return null
   const split = value.indexOf(' - ')
   return split > 0 && split < value.length - 3
