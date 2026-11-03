@@ -121,3 +121,26 @@ test('generic resolver reads Icecast first, falls back to AzuraCast then SHOUTca
     cover:'https://example.com/art.jpg'})
   assert.deepEqual(urls,['/status-json.xsl','/api/nowplaying'])
 })
+
+
+test('Nova JSON metadata wrapped in a radios array reaches desktop, like mobile', async () => {
+  const station = {
+    id: 'rb:nova-wrapped', title: 'Nova Danse',
+    url: 'https://nova-dance.ice.infomaniak.ch/nova-dance-256.aac',
+  }
+  const fakeFetch = async url => ({
+    ok: true, status: 200, headers: { get: () => null },
+    json: async () => ({ radios: [
+      { radio: { code: 'nova-soul' },
+        currentTrack: { artist: 'Other Artist', title: 'Other Track' } },
+      { radio: { code: 'nova-danse' },
+        currentTrack: { artist: 'Correct Artist', title: 'Correct Track',
+          image: 'https://www.nova.fr/correct-cover.jpg', duration: 222 } },
+    ] }),
+  })
+  const found = await visibleStationMetadata(station, { fetchImpl: fakeFetch })
+  assert.deepEqual(found, {
+    artist: 'Correct Artist', title: 'Correct Track',
+    cover: 'https://www.nova.fr/correct-cover.jpg', duration: 222,
+  })
+})
