@@ -433,7 +433,7 @@ export default function Playlist() {
               <button
                 type="button"
                 onClick={showExportMenu}
-                disabled={exportingPlaylist}
+                disabled={exportingPlaylist || !tracks.length}
                 aria-label={t('Playlist options')}
                 title={t('Playlist options')}
                 className={ICON_BUTTON}
