@@ -1,6 +1,10 @@
-const { ipcMain } = require('electron');
+const { ipcMain, dialog } = require('electron');
+const fsPromises = require('node:fs/promises');
 const path = require('path');
 const { getDB } = require('./db');
+const { buildM3u } = require('../playlists/exportM3u');
+const { configuredMusicRoots } = require('../libraryFolder');
+const { smartTracks, playlistRules } = require('../playlists/smart');
 
 function parseM3U(fileContent) {
   const lines = fileContent.split(/\r?\n/);
@@ -599,6 +603,49 @@ function importExternalMetadata(db, payload = {}) {
 }
 
 function registerPlaylistHandlers() {
+  // Native Save dialog + database read: order, source paths, and user scope
+  // come from the persisted playlist rather than filtered/sorted UI rows.
+  ipcMain.handle('playlist:exportFile', async (_, payload = {}) => {
+    try {
+      const { playlistId, userId = 'guest', format = 'm3u8' } = payload || {};
+      if (!['m3u', 'm3u8'].includes(format)) return { error: 'Unsupported playlist format.' };
+      if (typeof playlistId !== 'string' || !playlistId) return { error: 'No playlist selected.' };
+      const uid = String(userId || 'guest');
+      const db = getDB();
+      let name;
+      let tracks;
+      if (playlistId === 'liked') {
+        name = 'Liked Songs';
+        require('../online/sources').foldStreamedLikes(db, uid);
+        tracks = db.prepare('SELECT t.file_path FROM tracks t JOIN user_likes ul ON ul.track_id = t.id WHERE ul.user_id = ? ORDER BY ul.liked_at DESC').all(uid);
+      } else {
+        const playlist = db.prepare('SELECT name, user_id, smart_rules FROM playlists WHERE id = ?').get(playlistId);
+        if (!playlist || String(playlist.user_id || 'guest') !== uid) return { error: 'Playlist not found.' };
+        name = playlist.name;
+        tracks = playlistRules(playlist)
+          ? smartTracks(db, playlist.smart_rules, playlist.user_id)
+          : db.prepare('SELECT t.file_path FROM tracks t JOIN playlist_tracks pt ON pt.track_id = t.id WHERE pt.playlist_id = ? ORDER BY pt.position, link_track_key(t.artist,t.title,t.duration)').all(playlistId);
+      }
+      // Windows invalid filename characters and reserved suffixes must not
+      // leak into a suggested name, even if the playlist title contains them.
+      const stem = String(name || 'Playlist').replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '').slice(0, 100) || 'Playlist';
+      const saved = await dialog.showSaveDialog({
+        title: 'Export playlist',
+        defaultPath: stem + '.' + format,
+        buttonLabel: 'Export',
+        filters: [{ name: format.toUpperCase() + ' playlist', extensions: [format] }],
+      });
+      if (saved.canceled || !saved.filePath) return { canceled: true };
+      const { content, ...summary } = buildM3u(tracks, saved.filePath, { roots: configuredMusicRoots(db) });
+      if (!summary.exported) return { error: 'No available local files in this playlist to export.', ...summary };
+      await fsPromises.writeFile(saved.filePath, content, 'utf8');
+      return { ok: true, filePath: saved.filePath, format, ...summary };
+    } catch (error) {
+      console.error('Playlist export failed:', error);
+      return { error: error.message || 'Could not export playlist.' };
+    }
+  });
+
   ipcMain.handle('playlist:import', async (event, ...args) => {
     let payload;
     if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) payload = args[0];
