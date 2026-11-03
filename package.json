@@ -7,6 +7,7 @@
   "scripts": {
     "prebuild": "node scripts/check-electron-syntax.cjs",
     "test:electron-syntax": "node scripts/check-electron-syntax.cjs",
+    "test:playlist-export": "node --test scripts/playlist-m3u-export.test.mjs",
     "dev": "npm run gen:icons && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "dev:web": "npm run gen:icons && concurrently \"vite\" \"node server/start.js\"",
     "build": "npm run gen:icons && vite build && npm run native:prepare && electron-builder",
