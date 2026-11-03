@@ -92,7 +92,7 @@
     "publish": {
       "provider": "github",
       "owner": "lokal-music",
-      "repo": "lokal"
+      "repo": "Desktop"
     },
     "directories": {
       "output": "release"

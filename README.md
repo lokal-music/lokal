@@ -14,13 +14,13 @@
 ---
 ## Before reading further, check the common links:
 
->Download the [latest up-to-date release.](https://github.com/lokal-music/lokal/releases/latest) Windows releases are code-signed through [SignPath Foundation](https://signpath.org/) (see the [code signing policy](#code-signing-policy)).
+>Download the [latest up-to-date release.](https://github.com/lokal-music/Desktop/releases/latest) Windows releases are code-signed through [SignPath Foundation](https://signpath.org/) (see the [code signing policy](#code-signing-policy)).
 
 >If you are wondering why you have to create an account or other general questions, please [read the FAQ](./FAQ.md).
 
 >Interested in creating TTML lyrics? Check out [our side TTML editor!](https://github.com/sipbuu/lokal-ttml)
 
->See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) for known issues, and report any [issues/bugs](https://github.com/lokal-music/lokal/issues) you find.
+>See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) for known issues, and report any [issues/bugs](https://github.com/lokal-music/Desktop/issues) you find.
 
 >Read the [contribution guide](./CONTRIBUTING.md) if you'd like to help!
 ---
@@ -295,8 +295,8 @@ Everything is connected from **Settings → Integrations → Account Connections
 ## Getting Started
 
 ```bash
-git clone https://github.com/lokal-music/lokal/
-cd lokal
+git clone https://github.com/lokal-music/Desktop/
+cd Desktop
 npm install
 ```
 

@@ -1,7 +1,7 @@
 // Shared by artist metadata and music-video discovery. The public key permits
 // roughly 30 requests/minute; space all callers through the same queue.
 const BASE = 'https://www.theaudiodb.com/api/v1/json/123'
-const USER_AGENT = 'Lokal (https://github.com/lokal-music/lokal)'
+const USER_AGENT = 'Lokal (https://github.com/lokal-music/Desktop)'
 
 function createClient({ fetchImpl = fetch, gapMs = 2100 } = {}) {
   let nextAt = 0

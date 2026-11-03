@@ -1,7 +1,7 @@
 # Publishes Lokal's Cast receiver (receiver/) on GitHub Pages: the page a TV
 # loads when Lokal casts to it. Its address is what's registered in the
 # Google Cast SDK Developer Console (docs/CASTING.md): for Lokal,
-# https://lokal-music.github.io/lokal/receiver/. Needs Pages turned on once:
+# https://lokal-music.github.io/Desktop/receiver/. Needs Pages turned on once:
 # Settings → Pages → Source: GitHub Actions.
 name: Cast receiver
 

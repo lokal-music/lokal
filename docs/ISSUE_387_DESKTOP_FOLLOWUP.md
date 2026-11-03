@@ -1,6 +1,6 @@
 # Desktop parity for mobile issue #387
 
-Issue: https://github.com/lokal-music/lokal-mobile/issues/387
+Issue: https://github.com/lokal-music/Mobile/issues/387
 
 - **Multi-artist duplicates:** Default All Sources view prefers desktop-owned recordings when matching an imported phone copy using track title, duration, album and album owner (album_artist when present, falling back to lead track artist). Complete credits are preserved in the stored track rows. Explicit Mobile view still shows the phone original.
 - **Mix pages:** Home → Your Mixes title opens a local browser for that mix with track list, Back and Play. The cover remains quick-play; Save as playlist remains intact.

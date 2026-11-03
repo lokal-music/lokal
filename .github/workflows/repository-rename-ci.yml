@@ -1,0 +1,41 @@
+name: Desktop repository rename integration
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'src/App.jsx'
+      - 'src/pages/Settings.jsx'
+      - 'src/radio/stations.js'
+      - 'electron/**'
+      - 'docs/CASTING.md'
+      - '.github/workflows/cast-receiver.yml'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'scripts/repository-rename.test.mjs'
+      - '.github/workflows/repository-rename-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'src/radio/stations.js'
+      - 'docs/CASTING.md'
+      - 'scripts/repository-rename.test.mjs'
+      - '.github/workflows/repository-rename-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Electron update publisher, GitHub Pages receiver and legacy radio URLs
+        run: node --test scripts/repository-rename.test.mjs

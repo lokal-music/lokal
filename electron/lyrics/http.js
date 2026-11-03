@@ -5,7 +5,7 @@
 // lyric that turns up after the second chorus is no use to anyone, and the
 // fallbacks behind it are the better answer.
 
-const USER_AGENT = 'Lokal (https://github.com/lokal-music/lokal)'
+const USER_AGENT = 'Lokal (https://github.com/lokal-music/Desktop)'
 const DEFAULT_TIMEOUT_MS = 7000
 
 async function request(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body, signal } = {}) {

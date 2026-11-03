@@ -5,11 +5,11 @@ export const STATION_PATH_PREFIX = 'station://'
 export const RADIO_CONTEXT = 'internet-radio'
 // The station list everyone starts with (the main repository's radios.json):
 // used until another link is set (Settings → Online Radio).
-export const DEFAULT_RADIO_CATALOG_URL = 'https://raw.githubusercontent.com/lokal-music/lokal/refs/heads/main/radios.json'
+export const DEFAULT_RADIO_CATALOG_URL = 'https://raw.githubusercontent.com/lokal-music/Desktop/refs/heads/main/radios.json'
 
 /** Move only the former built-in catalogue; custom station lists stay intact. */
 export function resolveRadioCatalogUrl(url) {
-  if (!url || /^https:\/\/raw\.githubusercontent\.com\/sipbuu\/lokal\/(?:refs\/heads\/)?main\/radios\.json$/.test(url)) {
+  if (!url || /^https:\/\/raw\.githubusercontent\.com\/(?:sipbuu\/lokal|lokal-music\/lokal)\/(?:refs\/heads\/)?main\/radios\.json$/.test(url)) {
     return DEFAULT_RADIO_CATALOG_URL
   }
   return url
