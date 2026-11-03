@@ -2,7 +2,7 @@
 // audio stream to inspect another station's current track.
 const { isPublicHttpUrl } = require('../online/publicUrl')
 
-const { nowPlaying } = require('./nowPlaying')
+const { nowPlaying, coverFor } = require('./nowPlaying')
 
 const NOVA_METADATA_URL = 'https://www.nova.fr/radios-data/www.nova.fr/all.json'
 // These are the broadcaster's official stream hosts, carried over from
@@ -104,7 +104,12 @@ async function visibleStationMetadata(station, { fetchImpl = globalThis.fetch } 
   const provider = broadcasterApiForStation(station)
   const target = provider ? 'broadcaster:' + station.id : statusUrl(station.url)
   if (!target) return null
-  const unpack = value => provider ? value : parseIcecast(value, station.url)
+  const unpack = async value => {
+    const song = provider ? value : parseIcecast(value, station.url)
+    if (!song?.artist || !song?.title || song.cover || fetchImpl !== globalThis.fetch) return song
+    const cover = await coverFor(song, fetchImpl).catch(() => null)
+    return cover ? { ...song, cover } : song
+  }
   const entry = cache.get(target)
   if (fetchImpl === globalThis.fetch && entry && Date.now() < entry.until) {
     return unpack(await entry.pending)
