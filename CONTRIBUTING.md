@@ -30,8 +30,8 @@ The more people that help (because I can only do so much), the more this program
 1. **Fork the Repository** on GitHub.
 2. **Clone your fork locally:**
 ```bash
-git clone https://github.com/lokal-music/lokal.git
-cd lokal
+git clone https://github.com/lokal-music/Desktop.git
+cd Desktop
 npm install
 ```
 
@@ -93,13 +93,13 @@ If you modify the database schema:
 
 * Provide a clear description of the changes.
 * Include screenshots or GIFs if the UI has changed.
-* Link the PR to any related [Issues](https://github.com/lokal-music/lokal/issues).
+* Link the PR to any related [Issues](https://github.com/lokal-music/Desktop/issues).
 
 ---
 
 ## Reporting Bugs
 
-If you find a bug but don't have time to fix it, please [open an issue](https://github.com/lokal-music/lokal/issues) using our **Bug Report** template. Be sure to include:
+If you find a bug but don't have time to fix it, please [open an issue](https://github.com/lokal-music/Desktop/issues) using our **Bug Report** template. Be sure to include:
 
 * Your OS and Lokal version.
 * Console logs (found via `Ctrl+Shift+I` in the app).
