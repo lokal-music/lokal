@@ -238,6 +238,7 @@ contextBridge.exposeInMainWorld('electron', {
   radioLoadCatalog: (url) => invoke('radio:loadCatalog', url),
   radioNowPlaying: (stationApi) => invoke('radio:nowPlaying', stationApi),
   radioBrowse: (params) => invoke('radio:browse', params),
+  radioStationMetadata: (station) => invoke('radio:stationMetadata', station),
   storageLocations: () => invoke('storage:locations'),
   chooseStorageLocation: (kind) => invoke('storage:choose', kind),
   resetStorageLocation: (kind) => invoke('storage:reset', kind),
