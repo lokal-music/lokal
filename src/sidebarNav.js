@@ -9,7 +9,7 @@ export const SIDEBAR_ITEMS = [
   { icon: BarChart2, label: 'Recap', path: '/recap' },
   { icon: Disc3, label: 'Albums', path: '/albums', tour: 'albums' },
   { icon: Tags, label: 'Genres', path: '/genres' },
-  { icon: Radio, label: 'Radio', path: '/stations' },
+  { icon: Radio, label: 'Stations', path: '/stations' },
   { icon: Users, label: 'Artists', path: '/artists', tour: 'artists' },
   { icon: Clapperboard, label: 'Videos', path: '/videos' },
   { icon: AudioWaveform, label: 'Quality', path: '/quality' },

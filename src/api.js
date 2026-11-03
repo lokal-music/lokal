@@ -552,6 +552,8 @@ export const api = {
   radioGetCatalog: () => isE() ? el().radioGetCatalog() : apiFetch('/radio/catalog'),
   radioLoadCatalog: (url) => isE() ? el().radioLoadCatalog(url) : apiFetch('/radio/catalog', { method: 'POST', body: { url } }),
   radioNowPlaying: (stationApi) => isE() ? el().radioNowPlaying(stationApi) : apiFetch('/radio/now-playing', { method: 'POST', body: { api: stationApi } }).catch(() => null),
+  radioBrowse: (params = {}) => isE() ? el().radioBrowse(params) : apiFetch('/radio/browse?' + new URLSearchParams(params)),
+  radioStationMetadata: (station) => isE() ? el().radioStationMetadata(station) : apiFetch('/radio/metadata', { method: 'POST', body: { station } }),
   // { src, source } -- src is something a <video> can play in this mode.
   spotifyCanvasCheck: () => isE() ? el().spotifyCanvasCheck() : apiFetch('/artwork-fx/spotify-check', { method: 'POST' }),
   // Home → Releases → Followed artists: those followed on Spotify or in the Apple Music library (desktop app).

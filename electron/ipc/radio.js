@@ -4,6 +4,8 @@
 const { getDB } = require('./db')
 const { loadCatalog } = require('../radio/catalog')
 const { nowPlaying } = require('../radio/nowPlaying')
+const { browseStations } = require('../radio/browser')
+const { visibleStationMetadata } = require('../radio/metadata')
 
 function readSetting(key) {
   try { return getDB().prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null } catch { return null }
@@ -38,6 +40,8 @@ function registerRadioHandlers(ipcMain) {
   ipcMain.handle('radio:getCatalog', () => getCatalog())
   ipcMain.handle('radio:loadCatalog', (_, url) => loadAndSave(url).catch(error => ({ ok: false, errors: [{ path: '', code: 'network', detail: String(error?.message || error) }] })))
   ipcMain.handle('radio:nowPlaying', (_, api) => nowPlaying(api).catch(() => null))
+  ipcMain.handle('radio:browse', (_, params) => browseStations(params))
+  ipcMain.handle('radio:stationMetadata', (_, station) => visibleStationMetadata(station))
 }
 
 module.exports = { registerRadioHandlers, getCatalog, loadAndSave }
