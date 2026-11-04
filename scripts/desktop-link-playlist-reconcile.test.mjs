@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { diffPlaylistSnapshots, snapshotFromJournal } = require('../electron/link/reconcile.js')
+const { createLinkedLibraryRefresh } = require('../electron/link/libraryRefresh.js')
 
 const member = (key, position) => ({
   track_key: key, position, title: key, artist: 'Artist',
@@ -64,4 +65,27 @@ test('a captured delete does not generate a redundant deletion', () => {
     { entity_id: 'p', op: 'playlist.delete', fields_json: '{}' }
   ])
   assert.deepEqual(diffPlaylistSnapshots(journal, {}), [])
+})
+
+test('accepted mobile playlist batches refresh the desktop UI once, without a restart', async () => {
+  let renders = 0
+  const refresh = createLinkedLibraryRefresh({ publish: () => { renders++ }, delayMs: 10 })
+  refresh.accepted(0) // duplicate journal page
+  refresh.accepted(3) // playlist.create and member operations
+  refresh.accepted(2) // next page in the same sync
+  await new Promise(resolve => setTimeout(resolve, 40))
+  assert.equal(renders, 1)
+  refresh.accepted(1) // subsequent mobile rename
+  await new Promise(resolve => setTimeout(resolve, 40))
+  assert.equal(renders, 2)
+  refresh.close()
+})
+
+test('closing the desktop link cancels its pending playlist refresh', async () => {
+  let renders = 0
+  const refresh = createLinkedLibraryRefresh({ publish: () => { renders++ }, delayMs: 20 })
+  refresh.accepted(1)
+  refresh.close()
+  await new Promise(resolve => setTimeout(resolve, 40))
+  assert.equal(renders, 0)
 })

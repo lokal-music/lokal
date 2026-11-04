@@ -5,6 +5,7 @@ const QRCode = require('qrcode')
 const { LinkStore, safeEqual } = require('./store')
 const { installCapture } = require('./capture')
 const { reconcilePlaylists, savePlaylistSnapshot } = require('./reconcile')
+const { createLinkedLibraryRefresh } = require('./libraryRefresh')
 const { envelope, decode, text } = require('./protocol')
 const { advertise } = require('./discovery')
 let instance
@@ -15,6 +16,7 @@ function createLink({ server, db, remote, enabled = () => true }) {
   const currentUser = () => String(remote.getRemoteState().userId || 'guest')
   const store = new LinkStore(db)
   installCapture(store, currentUser)
+  const libraryRefresh = createLinkedLibraryRefresh()
   const sockets = new Map(), pending = new Map(), snapshots = new Map()
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
   let stopDiscovery
@@ -106,6 +108,7 @@ function createLink({ server, db, remote, enabled = () => true }) {
             reconcilePlaylists(store, device.user_id)
             const accepted = store.applyOps(body.items,device.user_id,device.id)
             savePlaylistSnapshot(store, device.user_id)
+            libraryRefresh.accepted(accepted)
             send(socket,'ack',{ok:true,accepted},message.id)
             break
           }
@@ -157,7 +160,7 @@ function createLink({ server, db, remote, enabled = () => true }) {
         pending.set(requestId,{deviceId:id,resolve,timer});send(socket,'command',command,requestId)
       })
     },
-    close() {clearInterval(heartbeat);stopDiscovery?.();remote.events.removeListener('state',stateListener);remote.events.removeListener('theme',themeListener);for(const socket of sockets.values())socket.close(1001);wss.close();for(const request of pending.values()){clearTimeout(request.timer);request.resolve({ok:false,error:'Link closed'})}instance=null},
+    close() {clearInterval(heartbeat);libraryRefresh.close();stopDiscovery?.();remote.events.removeListener('state',stateListener);remote.events.removeListener('theme',themeListener);for(const socket of sockets.values())socket.close(1001);wss.close();for(const request of pending.values()){clearTimeout(request.timer);request.resolve({ok:false,error:'Link closed'})}instance=null},
   }
   server.once('close',api.close)
   instance=api
