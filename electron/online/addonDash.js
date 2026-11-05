@@ -139,7 +139,7 @@ function parseStaticMpd(xml, manifestBase, addonBase) {
 }
 
 /** Downloads and joins the selected audio representation in the playback cache. */
-async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, key = '' } = {}) {
+async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, key = '', directory = null } = {}) {
   let xml = manifest.xml
   if (!xml) {
     const response = await fetchImpl(guardMediaUrl(manifest.url, addonBase), {
@@ -151,7 +151,7 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
     xml = data.toString('utf8')
   }
   const plan = parseStaticMpd(xml, manifest.base, addonBase)
-  const dir = require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache')
+  const dir = directory || (require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache'))
   await fsp.mkdir(dir, { recursive: true })
   const digest = crypto.createHash('sha256').update(key + '\n' + xml).digest('hex').slice(0, 24)
   const dest = path.join(dir, 'addon-dash-' + digest + '.m4a')
