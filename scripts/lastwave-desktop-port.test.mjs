@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRequire } from 'node:module'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const require=createRequire(import.meta.url)
 const addons=require('../electron/online/addons.js')
-const { extractManifest, parseStaticMpd, stageAddonDash }=require('../electron/online/addonDash.js')
+const { guardMediaUrl, extractManifest, parseStaticMpd, stageAddonDash }=require('../electron/online/addonDash.js')
 const { parseHybrid, fetchByteRange, stageHybrid }=require('../electron/online/addonHybrid.js')
 
 const base='https://lastwave.example/a/track-addon'
@@ -54,6 +54,16 @@ test('inline/remote DASH detection ignores bare default labels', () => {
   assert.deepEqual(parsed.segments,['https://cdn.example/frag-1.m4s','https://cdn.example/frag-2.m4s'])
 })
 
+test('review: public fc/fd hosts are allowed without admitting private IPv6 hosts', () => {
+  for (const hostname of ['fcdn.net', 'fdcdn.example.com']) {
+    const url='https://'+hostname+'/audio.m4a'
+    assert.equal(guardMediaUrl(url,base),url)
+  }
+  for (const url of ['https://[fc00::1]/audio.m4a','https://[fd12::1]/audio.m4a','https://[::1]/audio.m4a']) {
+    assert.throws(()=>guardMediaUrl(url,base),/private network hosts/)
+  }
+})
+
 test('actual static DASH stream is staged as a seekable local file', async () => {
   const dir=await mkdtemp(join(tmpdir(),'lokal-lastwave-dash-'))
   const calls=[]
@@ -71,6 +81,24 @@ test('actual static DASH stream is staged as a seekable local file', async () =>
       'https://cdn.example/frag-2.m4s',
     ])
   } finally { await rm(dir,{recursive:true,force:true}) }
+})
+
+test('review: failed DASH staging rejects without exposing partially assembled media', async () => {
+  const dir=await mkdtemp(join(tmpdir(),'lokal-lastwave-write-error-'))
+  let count=0
+  try {
+    await assert.rejects(
+      stageAddonDash({xml:sampleMpd,base},base,{
+        directory:dir,key:'fail-after-first-write',
+        fetchImpl:async()=>{
+          count++
+          if (count === 2) throw new Error('Simulated upstream I/O failure')
+          return new Response(Buffer.from('INIT'),{status:200})
+        },
+      }), /I\/O failure/,
+    )
+    assert.deepEqual(await readdir(dir),[], 'temporary recording must be removed on failure')
+  } finally {await rm(dir,{recursive:true,force:true})}
 })
 
 test('DASH refuses oversized network responses before allocating segment bodies', async () => {
