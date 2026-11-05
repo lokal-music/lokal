@@ -89,7 +89,7 @@ async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', di
     .digest('hex').slice(0,24)
   const dest=path.join(dir,'addon-hybrid-'+digest+'.m4a')
   if((await fs.stat(dest).catch(()=>null))?.size>0)return dest
-  const tmp=dest+'.'+process.pid+'.part'
+  const tmp=dest+'.'+process.pid+'.'+crypto.randomBytes(6).toString('hex')+'.part'
   let handle
   try {
     handle=await fs.open(tmp,'wx')
@@ -107,6 +107,10 @@ async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', di
     }
     await handle.close();handle=null
     await fs.rename(tmp,dest)
+    // Managed playback-cache entries count toward the user's shared limit.
+    if (!directory) {
+      try { require('../cache').trim({ keep: [dest] }) } catch {}
+    }
     return dest
   } catch(error) {
     await handle?.close().catch(()=>{})
