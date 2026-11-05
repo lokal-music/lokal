@@ -5,6 +5,8 @@ on:
       - 'electron/online/addons.js'
       - 'electron/online/addonDash.js'
       - 'electron/online/addonHybrid.js'
+      - 'electron/online/stagedMediaTrim.js'
+      - 'electron/main.js'
       - 'electron/online/addonHybridCenc.js'
       - 'electron/lyrics/flacVorbis.js'
       - 'electron/lyrics/providers/local.js'
@@ -13,6 +15,7 @@ on:
       - 'src/components/LyricsPanel.jsx'
       - 'scripts/lastwave-desktop-port.test.mjs'
       - 'scripts/lastwave-hybrid-cenc.test.mjs'
+      - 'scripts/staged-media-cache-trim.test.mjs'
       - 'scripts/desktop-background-lyrics-port.test.mjs'
       - '.github/workflows/lastwave-background-lyrics-ci.yml'
   workflow_dispatch:
@@ -36,6 +39,8 @@ jobs:
           node --check electron/online/addons.js
           node --check electron/online/addonDash.js
           node --check electron/online/addonHybrid.js
+          node --check electron/online/stagedMediaTrim.js
+          node --check electron/main.js
           node --check electron/online/addonHybridCenc.js
           node --check electron/lyrics/flacVorbis.js
           node --check electron/lyrics/providers/local.js
@@ -45,6 +50,7 @@ jobs:
           node --test \
             scripts/lastwave-desktop-port.test.mjs \
             scripts/lastwave-hybrid-cenc.test.mjs \
+            scripts/staged-media-cache-trim.test.mjs \
             scripts/desktop-background-lyrics-port.test.mjs \
             scripts/http-addon-signing.test.mjs \
             scripts/enhanced-lrc-background.test.mjs
