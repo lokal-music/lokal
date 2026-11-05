@@ -25,6 +25,7 @@ const crypto = require('crypto')
 const net = require('net')
 const { headersForSignedAddon } = require('./httpAddonSigning')
 const { extractManifest, stageAddonDash } = require('./addonDash')
+const { stageHybrid } = require('./addonHybrid')
 
 const SETTINGS_KEY = 'addons'
 const TIMEOUT_MS = { manifest: 10000, search: 10000, stream: 15000, catalogue: 15000 }
@@ -507,20 +508,27 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     for (const layer of layers) {
       if (layer.drm != null && layer.drm !== false) throw new Error('This add-on requires DRM, which Lokal cannot play.')
       if (layer.headers && Object.keys(layer.headers).length) throw new Error('This add-on requires unsupported media headers.')
-      if (layer.encrypted != null && layer.encrypted !== false)
-        throw new Error('This add-on returned encrypted media; a decrypted compatible rendition is required.')
+      if (layer.encrypted != null && layer.encrypted !== false && !json.hybrid)
+        throw new Error('This add-on returned encrypted media without a supported hybrid plan.')
     }
-    // A hybrid-only reply must never be mistaken for a progressive link.
-    if (json.hybrid) throw new Error('This add-on requires hybrid CENC playback, which this desktop adapter does not support.')
+    // Hybrid plans contain the content key and CDN ranges; keep them in the
+    // Electron process, never forward them to the renderer or playback URL.
     const candidates = ['url', 'directUrl', 'streamUrl', 'downloadUrl', 'mediaUrl']
       .map(name => json[name]).filter(value => typeof value === 'string' && value.trim() && !value.startsWith('data:'))
     const progressive = candidates.map(value => {
       try { return checkUrl(value).toString() } catch { return null }
     }).filter(Boolean).filter(value => !ADAPTIVE.test(value))
     const explicit = progressive.find(value => /\.(?:flac|mp3|m4a|mp4|ogg|opus|wav|aac|webm)(?:[?#]|$)/i.test(value))
-    const manifest = explicit ? null : extractManifest(json, addon.baseUrl)
+    const manifest = explicit || json.hybrid ? null : extractManifest(json, addon.baseUrl)
     let stream
-    if (manifest) {
+    if (json.hybrid) {
+      const file = await stageHybrid(json.hybrid, addon.baseUrl, {
+        fetchImpl, key: cacheKey,
+      })
+      stream = { type: 'file', file, url: null, headers: {},
+        mime: 'audio/mp4', format: 'm4a', quality: json.quality || null,
+        expiresAt: Date.now() + STREAM_TTL_MS }
+    } else if (manifest) {
       const file = await stageAddonDash(manifest, addon.baseUrl, {
         fetchImpl, key: cacheKey,
       })
