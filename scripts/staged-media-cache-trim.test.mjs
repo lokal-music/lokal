@@ -1,83 +1,116 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRequire } from 'node:module'
+
 const require = createRequire(import.meta.url)
 const { createDeferredTrimmer } = require('../electron/online/stagedMediaTrim.js')
 
-function harness(initial) {
+const selected = id => ({ connected: true, currentTrack: { id }, isPlaying: true })
+const idle = { connected: true, currentTrack: null, isPlaying: false }
+
+function harness(initial, trimCallback) {
   let state = initial
   let emit
   let trims = 0
-  const keep = ['previous-dash.m4a', 'current-hybrid.m4a']
+  let nextId = 0
+  const timers = new Map()
   const trimmer = createDeferredTrimmer({
-    trim: () => { trims++ },
+    trim: () => { trims++; trimCallback?.(trims) },
     getState: () => state,
     subscribe: fn => { emit = fn },
+    schedule(fn, duration) {
+      assert.equal(duration, 5000)
+      const id = ++nextId
+      timers.set(id, fn)
+      return id
+    },
+    cancel(id) { timers.delete(id) },
   })
   return {
     trimmer,
-    keep,
     set(next) { state = next; emit(next) },
+    advance() {
+      const callbacks = [...timers.values()]
+      timers.clear()
+      callbacks.forEach(callback => callback())
+    },
     get trims() { return trims },
+    get timers() { return timers.size },
   }
 }
 
-test('review: publishing a DASH file does not evict the preceding active track', () => {
-  const playing = { connected: true, currentTrack: { id: 'old' }, isPlaying: true }
-  const t = harness(playing)
+test('DASH publication never evicts the outgoing track during the handoff', () => {
+  const t = harness(selected('old'))
   t.trimmer.request()
-  assert.equal(t.trims, 0, 'publication must not run shared trim')
-  t.set({ ...playing, currentTrack: { id: 'new' } })
-  assert.equal(t.trims, 0, 'song changes and crossfades may still use old file')
-  t.set({ ...playing, currentTrack: { id: 'new' }, isPlaying: false })
-  assert.equal(t.trims, 0, 'paused playback can still hold the current file')
-  t.set({ connected: true, currentTrack: null, isPlaying: false })
-  assert.equal(t.trims, 1, 'only the cleared player state permits eviction')
+  assert.equal(t.trims, 0, 'publishing a song does not trim any file')
+  t.set(selected('new'))
+  assert.equal(t.trims, 0, 'old and new may overlap in an audio crossfade')
+  t.set({ ...selected('new'), isPlaying: false })
+  assert.equal(t.trims, 0, 'paused playback still holds the selected file')
+  t.set(idle)
+  assert.equal(t.trims, 0, 'even idle transition waits for audio handles to close')
+  assert.equal(t.timers, 1)
+  t.advance()
+  assert.equal(t.trims, 1)
   assert.equal(t.trimmer.pending, false)
 })
 
-test('review: DASH and hybrid publications coalesce into one shared-limit trim', () => {
-  const playing = { connected: true, currentTrack: { id: 'recording' }, isPlaying: true }
-  const t = harness(playing)
+test('DASH/hybrid publications coalesce into one shared-cache-budget trim', () => {
+  const t = harness(selected('track'))
   t.trimmer.request()
   t.trimmer.request()
-  t.set({ connected: true, currentTrack: null, isPlaying: false })
+  t.set(idle)
+  t.advance()
   assert.equal(t.trims, 1)
-  t.set({ connected: true, currentTrack: null, isPlaying: false })
+  t.set(idle)
+  t.advance()
   assert.equal(t.trims, 1)
 })
 
-test('review: preloaded files are not evicted before a selected song begins', () => {
-  const t = harness({ connected: true, currentTrack: null, isPlaying: false })
+test('preloaded files stay protected until a selected playback session completes', () => {
+  const t = harness(idle)
   t.trimmer.request()
-  t.set({ connected: true, currentTrack: null, isPlaying: false })
-  assert.equal(t.trims, 0, 'an idle report before playback is not evidence that the file is unused')
-  t.set({ connected: true, currentTrack: { id: 'prepared' }, isPlaying: true })
+  t.set(idle)
+  t.advance()
+  assert.equal(t.trims, 0, 'idle before playback does not prove prepared file unused')
+  t.set(selected('prepared'))
+  t.set(idle)
+  t.advance()
+  assert.equal(t.trims, 1)
+})
+
+test('transient idle between songs cancels pending trim', () => {
+  const t = harness(selected('a'))
+  t.trimmer.request()
+  t.set(idle)
+  assert.equal(t.timers, 1)
+  t.set(selected('b'))
+  assert.equal(t.timers, 0, 'resume cancels any impending eviction')
+  t.advance()
   assert.equal(t.trims, 0)
-  t.set({ connected: true, currentTrack: null, isPlaying: false })
+  t.set(idle)
+  t.advance()
   assert.equal(t.trims, 1)
 })
 
-test('review: failed cache trim remains deferred for a later safe retry', () => {
-  let emit
-  let attempts = 0
-  const playing = { connected: true, currentTrack: { id: 'a' }, isPlaying: true }
-  const trimmer = createDeferredTrimmer({
-    trim: () => { attempts++; if (attempts === 1) throw new Error('Disk busy') },
-    getState: () => playing,
-    subscribe: fn => { emit = fn },
+test('a failed cache trim remains pending for another safe idle attempt', () => {
+  const t = harness(selected('a'), attempts => {
+    if (attempts === 1) throw new Error('Disk busy')
   })
-  trimmer.request()
-  emit({ connected: true, currentTrack: null, isPlaying: false })
-  assert.equal(trimmer.pending, true)
-  emit({ connected: true, currentTrack: null, isPlaying: false })
-  assert.equal(attempts, 2)
-  assert.equal(trimmer.pending, false)
+  t.trimmer.request()
+  t.set(idle)
+  t.advance()
+  assert.equal(t.trimmer.pending, true)
+  t.set(idle)
+  t.advance()
+  assert.equal(t.trims, 2)
+  assert.equal(t.trimmer.pending, false)
 })
 
-test('review: an unreported playback state must never authorize a trim', () => {
+test('unreported playback state must not authorize cache eviction', () => {
   const t = harness({ connected: false, currentTrack: null, isPlaying: false })
   t.trimmer.request()
   t.set({ connected: false, currentTrack: null, isPlaying: false })
-  assert.equal(t.trims, 0, 'cold-start orphan cleanup runs before player creation instead')
+  t.advance()
+  assert.equal(t.trims, 0, 'cold-start cleanup occurs before any player exists')
 })
