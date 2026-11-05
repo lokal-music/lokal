@@ -107,10 +107,10 @@ async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', di
     }
     await handle.close();handle=null
     await fs.rename(tmp,dest)
-    // Managed playback-cache entries count toward the user's shared limit.
-    if (!directory) {
-      try { require('../cache').trim({ keep: [dest] }) } catch {}
-    }
+    // The audio engine may still be playing another cached recording.
+    // No authoritative list of its open files exists in Electron main, so
+    // trim only once the entire selected playback session has ended.
+    if (!directory) require('./stagedMediaTrim').requestTrimAfterPlayback()
     return dest
   } catch(error) {
     await handle?.close().catch(()=>{})
