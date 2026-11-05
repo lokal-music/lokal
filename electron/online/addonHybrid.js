@@ -80,9 +80,9 @@ async function fetchByteRange(url, range, fetchImpl, signal) {
   return Buffer.concat(chunks,count)
 }
 
-async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='' }={}) {
+async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', directory=null }={}) {
   const plan=parseHybrid(raw,addonBase)
-  const dir = require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache')
+  const dir = directory || (require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache'))
   await fs.mkdir(dir,{recursive:true})
   const digest=crypto.createHash('sha256')
     .update(key+'\n'+plan.url+'\n'+JSON.stringify(plan.ranges)+'\n'+plan.key)
