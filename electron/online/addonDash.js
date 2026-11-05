@@ -3,7 +3,6 @@
 // and segments into a seekable local fMP4; never hand an MPD to audio decoders.
 // No DRM stripping, dynamic MPDs, arbitrary network hosts or media headers.
 'use strict'
-const fs = require('node:fs')
 const fsp = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
@@ -46,7 +45,7 @@ function guardMediaUrl(value, addonBase) {
   const host = uri.hostname.toLowerCase()
   if (!host.includes('.') || host.endsWith('.') ||
       /(?:^localhost$|\.(?:local|localhost|internal|lan|home)$)/.test(host) ||
-      /^(?:127\.|10\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|0\.|\[?::1\]?|\[?fc|\[?fd)/.test(host)) {
+      /^(?:127\.|10\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|0\.|\[::1\]|\[f[cd])/.test(host)) {
     throw new Error('DASH media cannot use private network hosts.')
   }
   return uri.toString()
@@ -169,23 +168,32 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
   const digest = crypto.createHash('sha256').update(key + '\n' + xml).digest('hex').slice(0, 24)
   const dest = path.join(dir, 'addon-dash-' + digest + '.m4a')
   if ((await fsp.stat(dest).catch(() => null))?.size > 0) return dest
-  const tmp = dest + '.' + process.pid + '.part'
+  // Never overwrite (or clean up) another in-flight staging attempt.
+  const tmp = dest + '.' + process.pid + '.' + crypto.randomBytes(6).toString('hex') + '.part'
   let length = 0
   try {
-    const output = fs.createWriteStream(tmp, { flags: 'wx' })
+    // FileHandle rejects open/write failures (ENOSPC/EACCES) as promises.
+    // WriteStream would emit an unhandled 'error' event in Electron main.
+    const output = await fsp.open(tmp, 'wx')
     try {
       for (const address of [plan.initUrl, ...plan.segments]) {
+        if (signal?.aborted) throw signal.reason || new Error('DASH playback was cancelled.')
         const response = await fetchImpl(address, {
           signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
         })
         if (!response.ok || !response.body) throw new Error('The DASH audio segment could not be fetched.')
         const part = await boundedResponse(response, Math.min(SEGMENT_BYTES, MAX_AUDIO_BYTES - length), 'DASH audio exceeds playback limits.')
         if (!part.length || (length += part.length) > MAX_AUDIO_BYTES) throw new Error('DASH audio exceeds playback limits.')
-        if (!output.write(part)) await new Promise(resolve => output.once('drain', resolve))
+        await output.writeFile(part)
       }
-      await new Promise((resolve, reject) => output.end(err => err ? reject(err) : resolve()))
-    } catch (error) { output.destroy(); throw error }
+    } finally {
+      await output.close()
+    }
     await fsp.rename(tmp, dest)
+    // Honor the user's common cache budget after publication.
+    if (!directory) {
+      try { require('../cache').trim({ keep: [dest] }) } catch {}
+    }
     return dest
   } catch (error) {
     await fsp.unlink(tmp).catch(() => {})
