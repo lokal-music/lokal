@@ -99,7 +99,8 @@ router.post('/library/lyrics', async (req, res) => {
 
 router.get('/files', (req, res) => {
   if (!pairedUser(req, res)) return
-  res.json({ originalFiles: true, contentMatching: true, sizeMatching: true })
+  res.json({ originalFiles: true, contentMatching: true, sizeMatching: true,
+    uploadOperations: require('../linkUpload').uploadOperationVersion() })
 })
 
 // A blocked filesystem or disconnected phone must not leave a preview running
@@ -153,6 +154,20 @@ router.post('/files/match', async (req, res) => {
   } catch {
     if (!res.destroyed) res.status(503).json({ error: 'Desktop content check did not finish. Reconnect and retry.' })
   }
+})
+
+router.get('/files/operations', (req,res) => {
+  if (!pairedUser(req,res)) return
+  res.set('Cache-Control','private, no-store').json({protocolVersion:1,
+    uploadOperations:require('../linkUpload').uploadOperationVersion()})
+})
+router.get('/files/operations/:operationId', (req,res) => {
+  if (!pairedUser(req,res)) return
+  return require('../linkUpload').phoneUploadStatus(req,res)
+})
+router.post('/files/operations/:operationId/cancel', (req,res) => {
+  if (!pairedUser(req,res)) return
+  return require('../linkUpload').cancelPhoneUpload(req,res)
 })
 
 router.get('/files/:trackId', (req, res) => {

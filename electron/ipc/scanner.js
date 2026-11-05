@@ -29,7 +29,8 @@ const { normalizeArtwork, writeEmbeddedArtwork } = require('../fileArtwork')
 const { artistIdFromName, findArtistById, migrateUnknownArtist, resolveArtistId, trackArtistLinks } = require('../artistId')
 
 const DEFAULT_MUSIC_PATH = 'C:\\Users\\sipbuu\\Music'
-const AUDIO_EXTS = new Set(['.mp3', '.flac', '.m4a', '.ogg', '.wav', '.aac', '.opus', '.wma', '.alac', '.ape'])
+const { walkDir, AUDIO_EXTS } = require('./walkMusicFiles')
+const { isPrivatePhoneUploadPath } = require('../phoneUploadPaths')
 const { isPreparedStemClipName } = require('../automix/stem-clip')
 // Same secrets as the web server's SECRET_KEYS (server/routes/settings.js):
 // masked by settings:get, left out of settings:exportAll, kept on import.
@@ -205,36 +206,6 @@ async function extractArtwork(metadata, trackId, fallbackArtwork = null) {
   return fallbackArtwork || null
 }
 
-// `failures` collects folders that could not be read, so a scan can tell it
-// missed files instead of looking complete.
-async function walkDir(dir, files = [], failures = null) {
-  // SMB/WebDAV mounts may take seconds to reply or disappear mid-scan.
-  // Never perform directory enumeration synchronously in Electron's main
-  // thread, and avoid a recursive JS stack on deeply nested NAS libraries.
-  const { withTimeout } = require('./networkLibrary')
-  const pending = [dir]
-  const visited = new Set()
-  while (pending.length) {
-    const current = pending.pop()
-    if (visited.has(current)) continue
-    visited.add(current)
-    let entries
-    try {
-      entries = await withTimeout(fsp.readdir)(current, { withFileTypes: true })
-    } catch (error) {
-      failures?.push(current)
-      console.warn('[scanner] Folder enumeration failed:', current, error.message)
-      continue
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name)
-      if (entry.isDirectory()) pending.push(full)
-      else if (entry.isFile() && !isPreparedStemClipName(entry.name) &&
-          AUDIO_EXTS.has(path.extname(entry.name).toLowerCase())) files.push(full)
-    }
-  }
-  return files
-}
 
 function isDrumKit(title, album, genre) {
   if (DRUM_KIT_PATTERNS.test(title)) return true
@@ -2081,6 +2052,7 @@ function updateTrackArtistLinks(db, trackId, artist) {
 }
 
 async function indexSingleFile(filePath, opts = {}) {
+  if (isPrivatePhoneUploadPath(filePath)) return null
   const db = getDB()
   const stat = fs.statSync(filePath)
   const trackId = 't-' + hashFile(filePath, stat)
@@ -2317,7 +2289,7 @@ async function applyFileChanges(changes = [], activeRoots) {
     if (!rawPath) continue
     const filePath = path.resolve(String(rawPath))
     // Prepared stem clips are internal transition cache, not library songs.
-    if (isPreparedStemClipName(filePath)) continue
+    if (isPreparedStemClipName(filePath) || isPrivatePhoneUploadPath(filePath)) continue
     const owner = rootFor(filePath)
     if (!owner || seen.has(filePath)) continue
     seen.add(filePath)
