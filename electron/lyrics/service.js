@@ -126,6 +126,9 @@ function writeRow(db, trackId, filePath, result, extra = {}) {
     // The standalone enhanced-LRC backing-voice parser was introduced after
     // earlier synced local entries were persisted without their background.
     bgLrcChecked: true,
+    // FLAC's separately stored [bg:] Vorbis tag was previously invisible to
+    // desktop metadata readers. Force one rescan of old local cache rows.
+    vorbisBgChecked: true,
     sync: result?.sync || null,
     duet: !!result?.duet,
     isrc: result?.isrc || null,
@@ -299,7 +302,9 @@ async function getLyrics(db, args) {
           const pinned = fromRow(row, meta, db)
           if (trackId && row.track_id !== trackId) writeRow(db, trackId, filePath, pinned, { attempts: meta.attempts, pinned: true })
           return pinned
-        } else if (row.source === 'local' && !meta.bgLrcChecked && filePath) {
+        } else if (row.source === 'local' &&
+          (!meta.bgLrcChecked || (!meta.vorbisBgChecked && /\.flac$/i.test(filePath || ''))) &&
+          filePath) {
           // Existing word-timed local cache rows can be missing every [bg:]
           // supporting vocal. Re-read the embedded source once after upgrade;
           // keep the cached result if the file is unavailable or unchanged.
