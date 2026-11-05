@@ -573,6 +573,9 @@ app.whenReady().then(async () => {
     app.setAppUserModelId('com.lokal.music');
   }
   try { initDB() } catch (e) { console.error('DB:', e.message) }
+  // Evict deferred playback-cache entries while no renderer/player exists.
+  // Stagers postpone trimming to avoid deleting audio still held by Chromium.
+  try { require('./cache').trim() } catch (e) { console.warn('Cache startup trim:', e.message) }
   try {
     const db = getDB()
     const plural = db.prepare("SELECT value FROM settings WHERE key = 'music_folders'").get()?.value

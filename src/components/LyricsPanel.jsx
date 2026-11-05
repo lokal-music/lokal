@@ -9,6 +9,7 @@ import { isWindowHidden, onWindowVisibility } from '../windowVisibility'
 import { useLyricSubline } from '../lyrics/useLyricSubline'
 import { sublineStatusNotice } from '../lyrics/sublineNotice.mjs'
 import { announceLyricsChanged } from '../lyricLine'
+import { activeSupportingVocalIndex } from '../lyrics/supportingVocals.mjs'
 import { isStationTrack, lyricsTrackFor, stationClockUnknown, stationSongTime } from '../radio/stations'
 import { usePlayerStore } from '../store/player'
 import { cacheLyrics, hasCachedLyrics, peekLyrics } from '../lyrics/lyricsCache'
@@ -152,7 +153,7 @@ export function paintVoice(voiceEl, units, t, live) {
 // ---------------------------------------------------------------- rows
 
 const Row = React.memo(function Row({
-  line, index, until, clock, distance, isFocused, isLive, synced, browsing, wordSync, fullscreen, textScale, duet, sub, onSeek, registerRow, onGapCollapse,
+  line, index, until, clock, distance, isFocused, isLive, synced, browsing, wordSync, fullscreen, textScale, duet, sub, supporting, onSeek, registerRow, onGapCollapse,
 }) {
   const { t } = useTranslation()
   const rowRef = useRef(null)
@@ -203,11 +204,12 @@ const Row = React.memo(function Row({
     )
   }
 
-  const hasBg = !!line.bgText
+  // Synced backing vocals follow the current lead, not their original row.
+  const activeBg = synced ? supporting : (line.bgText ? { ...line, sourceIndex: index } : null)
   const subText = sub?.text && sub.text !== line.text ? sub.text : null
   const subBg = sub?.bgText && sub.bgText !== line.bgText ? sub.bgText : null
   const subUnits = sub?.words?.length ? sub.words : null
-  const bgUnits = line.bgWords || []
+  const bgUnits = activeBg?.bgWords || []
 
   return (
     <div ref={rowRef} data-row={index} className="w-full" style={{ willChange: 'transform' }}>
@@ -254,15 +256,25 @@ const Row = React.memo(function Row({
             </span>
           )}
         </div>
-        {hasBg && (
-          <div style={{ fontSize: `${baseSize * 0.68}rem`, lineHeight: 1.25, fontWeight: 600, marginTop: '0.15em', opacity: 0.78 }}>
-            {synced && wordSync && bgUnits.length ? (
-              <Voice voiceRef={bgRef} units={bgUnits} text={line.bgText} wordSync />
-            ) : (
-              <span ref={bgRef} data-voice="plain" style={{ color: !synced || isFocused ? SUNG : UNSUNG, transition: `color ${HANDOVER_MS}ms ${EASE}` }}>{line.bgText}</span>
-            )}
-          </div>
-        )}
+        <AnimatePresence initial={false} mode="wait">
+          {activeBg && (
+            <motion.div
+              key={activeBg.sourceIndex}
+              data-background-vocal={activeBg.sourceIndex}
+              initial={{ opacity: 0, height: 0, y: 7 }}
+              animate={{ opacity: 0.84, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -5 }}
+              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              style={{ overflow: 'hidden', fontSize: `${baseSize * 0.68}rem`, lineHeight: 1.25, fontWeight: 600, marginTop: '0.15em' }}
+            >
+              {synced && wordSync && bgUnits.length ? (
+                <Voice voiceRef={bgRef} units={bgUnits} text={activeBg.bgText} wordSync />
+              ) : (
+                <span ref={bgRef} data-voice="plain" style={{ color: !synced || isFocused ? SUNG : UNSUNG, transition: `color ${HANDOVER_MS}ms ${EASE}` }}>{activeBg.bgText}</span>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <AnimatePresence initial={false}>
           {(subText || subBg) && (
             <motion.div
@@ -422,6 +434,10 @@ export default function LyricsPanel({
   const [sources, setSources] = useState([])
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [focusIdx, setFocusIdx] = useState(-1)
+  const [activeBgIndex, setActiveBgIndex] = useState(-1)
+  const activeBgRef = useRef(-1)
+  const focusedRowRef = useRef(-1)
+  focusedRowRef.current = focusIdx
   const [liveKey, setLiveKey] = useState('')
   const [browsing, setBrowsing] = useState(false)
 
@@ -512,6 +528,7 @@ export default function LyricsPanel({
     const cached = trackKey != null && hasCachedLyrics(trackKey)
     // Cached: its lines show right away (even if the previous song was still
     // loading); otherwise the loading state until this song's answer.
+    activeBgRef.current = -1; setActiveBgIndex(-1)
     setBoundResult(cached ? trackKey : null, cached ? peekLyrics(trackKey) : null); setLoading(!cached && trackKey != null); setFocusIdx(-1); lastScrollIdx.current = -1
     load({}, cached)
   }, [trackKey]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -559,6 +576,9 @@ export default function LyricsPanel({
       const focus = focusRow(lines, t + FOCUS_LEAD_S)
       setFocusIdx(focus)
       setLiveKey(stillSinging(lines, t, focus).join(','))
+      const bg = activeSupportingVocalIndex(lines, t)
+      activeBgRef.current = bg
+      setActiveBgIndex(bg)
     } else if (isAutoSynced && track?.duration) {
       setFocusIdx(Math.min(lines.length - 1, Math.floor((progress / track.duration) * lines.length)))
     } else {
@@ -581,6 +601,11 @@ export default function LyricsPanel({
       if (hidden) return
       const t = now()
       const live = new Set(activeRows(lines, t))
+      const bg = activeSupportingVocalIndex(lines, t)
+      if (bg !== activeBgRef.current) {
+        activeBgRef.current = bg
+        setActiveBgIndex(bg)
+      }
       // Lines that just stopped being sung get settled into their final state once.
       for (const i of paintedRows.current) {
         if (live.has(i)) continue
@@ -588,7 +613,6 @@ export default function LyricsPanel({
         const line = lines[i]
         if (refs && line && wordSync) {
           paintVoice(refs.leadEl, line.words, t, false)
-          paintVoice(refs.bgEl, line.bgWords, t, false)
           const sub = subLines?.[i]
           if (sub?.words?.length && refs.subEl) {
             paintVoice(refs.subEl.querySelector('[data-voice="timed"]'), sub.words, t, false)
@@ -602,9 +626,15 @@ export default function LyricsPanel({
         if (line.gap) continue
         if (!wordSync) continue
         paintVoice(refs.leadEl, line.words, t, true)
-        paintVoice(refs.bgEl, line.bgWords, t, true)
         const sub = subLines?.[i]
         if (sub?.words?.length && refs.subEl) paintVoice(refs.subEl.querySelector('[data-voice="timed"]'), sub.words, t, true)
+      }
+      // Render the vocal's independently timed words under the current
+      // lead even when the source row has scrolled out of view.
+      const bgVoice = lines[bg]
+      if (bgVoice?.bgWords?.length && wordSync) {
+        const focused = rowsRef.current.get(focusedRowRef.current)
+        paintVoice(focused?.bgEl, bgVoice.bgWords, t, true)
       }
       paintedRows.current = live
       raf = requestAnimationFrame(tick)
@@ -633,13 +663,15 @@ export default function LyricsPanel({
       const line = lines[i]
       if (!line || line.gap) return
       paintVoice(refs.leadEl, line.words, t, false)
-      paintVoice(refs.bgEl, line.bgWords, t, false)
+      if (i === focusIdx && activeBgIndex >= 0) {
+        paintVoice(refs.bgEl, lines[activeBgIndex]?.bgWords, t, false)
+      }
       const sub = subLines?.[i]
       if (sub?.words?.length && refs.subEl) {
         paintVoice(refs.subEl.querySelector('[data-voice="timed"]'), sub.words, t, false)
       }
     })
-  }, [lines, synced, wordSync, subLines, now])
+  }, [lines, synced, wordSync, subLines, now, focusIdx, activeBgIndex])
 
   // ---- scrolling: native scroll for browsing, a staggered glide for following
   // In the compact card, pin the focused line near the top so a Canvas above it
@@ -927,6 +959,9 @@ export default function LyricsPanel({
                   textScale={textScale}
                   duet={!!result?.duet}
                   sub={subLines?.[i] || null}
+                  supporting={synced && i === focusIdx && activeBgIndex >= 0
+                    ? { ...lines[activeBgIndex], sourceIndex: activeBgIndex }
+                    : null}
                   onSeek={seek}
                   registerRow={registerRow}
                   onGapCollapse={line.gap ? handleGapCollapse : undefined}

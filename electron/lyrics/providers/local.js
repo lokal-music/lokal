@@ -10,6 +10,7 @@
 const fs = require('fs')
 const path = require('path')
 const { fromPrivateTag, PRIVATE_TAG } = require('../embedded')
+const { readFlacLyrics, selectWithBacking, attachBackgroundRows } = require('../flacVorbis')
 
 let mm = null
 function metadata() {
@@ -107,9 +108,10 @@ function embeddedText(meta) {
     const bgCount = text => (text.match(/^\s*\[bg\s*:/gim) || []).length
     // Presence of timed backing vocals is higher-fidelity evidence than
     // adjacent translation count, which incorrectly scores [bg:] as a subline.
-    return synced.reduce((best, part) => bgCount(part) !== bgCount(best)
+    const best = synced.reduce((best, part) => bgCount(part) !== bgCount(best)
       ? (bgCount(part) > bgCount(best) ? part : best)
       : (translationLineScore(part) > translationLineScore(best) ? part : best))
+    return attachBackgroundRows(best, ...synced)
   }
   return parts[0] || null
 }
@@ -177,29 +179,73 @@ function isAudioFile(filePath) {
   try { return fs.statSync(filePath).isFile() } catch { return false }
 }
 
+/** Attach timed independent vocals without replacing a better lead timeline.
+ * Existing private tags retain their word times and their lyric identity.
+ */
+function mergePrivateBackground(own, raw) {
+  if (!raw || !Array.isArray(own?.lines)) return own
+  // Without a lead onset, timed backing voices have no meaningful anchor.
+  if (!own.lines.some(line => Number.isFinite(line?.time))) return own
+  // A Vorbis field may contain *only* [bg:] events. The ordinary parser
+  // rejects a lyric document with no lead, so supply a synthetic lead solely
+  // to decode those independent voice events. Never return that anchor.
+  const parser = require('../detect').parseAny
+  const standalone = parser(raw)?.lines || []
+  const parsed = standalone.some(line => line.bgText)
+    ? standalone
+    : parser('[00:00.000]<00:00.000>Lokal <00:00.100>anchor <00:00.200>\n' + raw)?.lines || standalone
+  const extras = []
+  for (const line of parsed) {
+    if (!line?.bgText) continue
+    const onset = line.bgWords?.[0]?.time ?? line.time
+    if (Number.isFinite(onset)) extras.push({ text: line.bgText, words: line.bgWords || [], onset })
+  }
+  if (!extras.length) return own
+  const lines = own.lines.map(line => ({ ...line }))
+  const seen = new Set(lines.filter(l => l.bgText).map(l =>
+    [l.bgText, l.bgWords?.[0]?.time ?? l.time].join('|')))
+  let changed = false
+  for (const bg of extras) {
+    if (!lines.length || seen.has([bg.text, bg.onset].join('|'))) continue
+    let index = 0
+    for (let i = 0; i < lines.length; i++) {
+      if (Number.isFinite(lines[i].time) && lines[i].time <= bg.onset + 0.02) index = i
+      else if (Number.isFinite(lines[i].time) && lines[i].time > bg.onset) break
+    }
+    const row = lines[index]
+    row.bgText = row.bgText ? row.bgText + ' ' + bg.text : bg.text
+    row.bgWords = [...(row.bgWords || []), ...bg.words].sort((a, b) => a.time - b.time)
+    seen.add([bg.text, bg.onset].join('|'))
+    changed = true
+  }
+  return changed ? { ...own, lines } : own
+}
+
 async function fetch(query) {
   const filePath = query.filePath
   if (!isAudioFile(filePath)) return null
+  // Mobile's working FLAC path reads the original Vorbis comment block:
+  // music-metadata often flattens the main LRC and skips separate [bg:] tags.
+  const flacLyrics = await readFlacLyrics(filePath)
   const sidecar = readSidecar(filePath)
-  if (sidecar) return { raw: sidecar }
+  if (sidecar) return { raw: attachBackgroundRows(sidecar, flacLyrics) }
   const lib = metadata()
-  if (!lib) return null
+  if (!lib) return flacLyrics ? { raw: flacLyrics } : null
   try {
     const meta = await lib.parseFile(filePath, { duration: false, skipCovers: true })
     const own = privateLyrics(meta)
+    const embedded = embeddedText(meta)
+    const text = selectWithBacking([flacLyrics, embedded])
     if (own) {
-      const text = embeddedText(meta)
-      if (text && own.lines.some(line => !line.translation?.text)) {
-        // Older private tags may have lost some or all translations. Fill only
-        // missing lines from the portable tag; keep Lokal's precise timings.
-        const recovered = recoverTranslations(own, text)
-        if (recovered) return recovered
-      }
-      return { lines: own.lines, language: own.language }
+      const translated = text && own.lines.some(line => !line.translation?.text)
+        ? recoverTranslations(own, text) || own
+        : own
+      return mergePrivateBackground(translated, text)
     }
-    const text = embeddedText(meta)
     return text ? { raw: text } : null
-  } catch { return null }
+  } catch {
+    return flacLyrics ? { raw: flacLyrics } : null
+  }
 }
 
-module.exports = { fetch, readIsrc, privateLyrics, embeddedText, recoverTranslations }
+module.exports = { fetch, readIsrc, privateLyrics, embeddedText, recoverTranslations, mergePrivateBackground }

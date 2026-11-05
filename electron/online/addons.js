@@ -22,8 +22,11 @@
 // Stored in the settings table as JSON under "addons".
 
 const crypto = require('crypto')
+const fs = require('node:fs')
 const net = require('net')
 const { headersForSignedAddon } = require('./httpAddonSigning')
+const { extractManifest, stageAddonDash } = require('./addonDash')
+const { stageHybrid } = require('./addonHybrid')
 
 const SETTINGS_KEY = 'addons'
 const TIMEOUT_MS = { manifest: 10000, search: 10000, stream: 15000, catalogue: 15000 }
@@ -484,35 +487,78 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
   // Playback and download use separate intent-scoped caches.
   const cacheKey = `${key}\n${id}\n${download ? 'download' : 'stream'}`
   const cached = streamCache.get(cacheKey)
-  if (!force && cached && cached.expiresAt > Date.now()) return cached
+  // A deferred shared-cache trim may have removed a previously staged file.
+  // Never return a dead file reference from the TTL cache.
+  if (!force && cached && cached.expiresAt > Date.now() &&
+      (!cached.file || fs.existsSync(cached.file))) return cached
   if (!force && resolving.has(cacheKey)) return resolving.get(cacheKey)
-  const job = getJson(endpoint(addon, `/stream/${encodeURIComponent(id)}`), { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream', signingKey: addon.signingKey || '' })
-    .then(raw => {
-      // Some add-on providers duplicate or nest the stream under "data".
-      const json = raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)
-        ? { ...raw, ...raw.data } : raw
-      for (const layer of [raw, json]) {
-        if (layer.encrypted != null && layer.encrypted !== false)
-          throw new Error('This addon only gave an encrypted stream for this track, which Lokal cannot play.')
-        if (layer.drm != null && layer.drm !== false)
-          throw new Error('This addon requires DRM, which Lokal cannot play.')
-        if (layer.headers && Object.keys(layer.headers).length)
-          throw new Error('This addon requires unsupported media headers.')
-        if (needsManifest(layer.manifest))
-          throw new Error('This addon streams in a format Lokal cannot play yet (DASH/HLS).')
+  // LastWave may wrap the real audio inside "stream" and/or "data".
+  // Its default format=manifest="dash" is not proof that the returned URL
+  // is an MPD. Prefer actual audio bytes, then a *real* DASH plan.
+  const job = (async () => {
+    const url = endpoint(addon, `/stream/${encodeURIComponent(id)}`)
+    const options = { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream', signingKey: addon.signingKey || '' }
+    let raw
+    try { raw = await getJson(url, options) }
+    catch (error) {
+      // Mobile retries transient stream minting errors once, preserving the
+      // exact signing/intent scope; never retry auth or entitlement failures.
+      if (error?.status !== 502 && error?.status !== 503) throw error
+      raw = await getJson(url, options)
+    }
+    const layers = [raw, raw.data, raw.stream, raw.data?.stream]
+      .filter(layer => layer && typeof layer === 'object' && !Array.isArray(layer))
+    const json = Object.assign({}, ...layers)
+    for (const layer of layers) {
+      if (layer.drm != null && layer.drm !== false) throw new Error('This add-on requires DRM, which Lokal cannot play.')
+      if (layer.headers && Object.keys(layer.headers).length) throw new Error('This add-on requires unsupported media headers.')
+      if (layer.encrypted != null && layer.encrypted !== false && !json.hybrid)
+        throw new Error('This add-on returned encrypted media without a supported hybrid plan.')
+    }
+    // Hybrid plans contain the content key and CDN ranges; keep them in the
+    // Electron process, never forward them to the renderer or playback URL.
+    const candidates = ['url', 'directUrl', 'streamUrl', 'downloadUrl', 'mediaUrl']
+      .map(name => json[name]).filter(value => typeof value === 'string' && value.trim() && !value.startsWith('data:'))
+    const progressive = candidates.map(value => {
+      try { return checkUrl(value).toString() } catch { return null }
+    }).filter(Boolean).filter(value => !ADAPTIVE.test(value))
+    const explicit = progressive.find(value => /\.(?:flac|mp3|m4a|mp4|ogg|opus|wav|aac|webm)(?:[?#]|$)/i.test(value))
+    const manifest = explicit || json.hybrid ? null : extractManifest(json, addon.baseUrl)
+    let stream
+    if (json.hybrid) {
+      const file = await stageHybrid(json.hybrid, addon.baseUrl, {
+        fetchImpl, key: cacheKey,
+      })
+      stream = { type: 'file', file, url: null, headers: {},
+        mime: 'audio/mp4', format: 'm4a', quality: json.quality || null,
+        expiresAt: Date.now() + STREAM_TTL_MS }
+    } else if (manifest) {
+      const file = await stageAddonDash(manifest, addon.baseUrl, {
+        fetchImpl, key: cacheKey,
+      })
+      stream = { type: 'file', file, url: null, headers: {},
+        mime: 'audio/mp4', format: 'm4a', quality: json.quality || null,
+        expiresAt: Date.now() + STREAM_TTL_MS }
+    } else {
+      const direct = explicit || progressive[0]
+      if (!direct) throw new Error('The addon gave no playable audio link or supported DASH manifest.')
+      // The protocol string "dash" is a LastWave default, not a media
+      // transport indicator when the URL itself points to progressive audio.
+      for (const value of [json.mediaType, json.container, json.mimeType]) {
+        if (/\b(?:hls|mpegurl|m3u8|mpd)\b/i.test(String(value || ''))) {
+          throw new Error('This addon streams an unsupported adaptive format.')
+        }
       }
-      let url
-      try { url = checkUrl(json.url || json.directUrl || json.streamUrl || json.downloadUrl || json.mediaUrl).toString() }
-      catch { throw new Error('The addon gave no playable link for this track.') }
-      if (ADAPTIVE.test(url)) throw new Error('This addon streams in a format Lokal cannot play yet (DASH/HLS).')
-      const format = streamFormat(json, url)
-      const expires = Number(json.expiresAt) > 0 ? Number(json.expiresAt) * (Number(json.expiresAt) < 1e12 ? 1000 : 1) - 60000 : Date.now() + STREAM_TTL_MS
-      const stream = { url, headers: {}, mime: MIME[format] || 'audio/*', expiresAt: Math.max(Date.now() + 30000, expires), format: format || null, quality: json.quality || null }
-      if (streamCache.size > 200) streamCache.delete(streamCache.keys().next().value)
-      streamCache.set(cacheKey, stream)
-      return stream
-    })
-    .finally(() => resolving.delete(cacheKey))
+      const format = streamFormat(json, direct)
+      stream = { url: direct, headers: {}, mime: MIME[format] || 'audio/*',
+        expiresAt: Math.max(Date.now() + 30000,
+          Number(json.expiresAt) > 0 ? Number(json.expiresAt) * (Number(json.expiresAt) < 1e12 ? 1000 : 1) - 60000 : Date.now() + STREAM_TTL_MS),
+        format: format || null, quality: json.quality || null }
+    }
+    if (streamCache.size > 200) streamCache.delete(streamCache.keys().next().value)
+    streamCache.set(cacheKey, stream)
+    return stream
+  })().finally(() => resolving.delete(cacheKey))
   resolving.set(cacheKey, job)
   return job
 }
