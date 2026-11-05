@@ -524,7 +524,7 @@ module.exports = {
   install: (db, url, options) => /\.(sflx|spotiflac-ext)(?:[?#]|$)/i.test(String(url)) ? packageService(db).install({ url }) : install(db, url, options),
   remove: (db, key) => optionalPackages(db)?.find(key) ? packageService(db).remove(key) : remove(db, key),
   setEnabled: (db, key, enabled) => optionalPackages(db)?.find(key) ? packageService(db).setEnabled(key, enabled) : setEnabled(db, key, enabled),
-  setSettings: (db, key, values) => optionalPackages(db)?.find(key) ? packageService(db).setSettings(key, values) : setSettings(db, key, values),
+  setSettings: (db, key, values, options) => optionalPackages(db)?.find(key) ? packageService(db).setSettings(key, values) : setSettings(db, key, values, options),
   refreshManifests,
   search: (db, key, query, options) => optionalPackages(db)?.find(key) ? packageService(db).search(key, query, options) : search(db, key, query, options),
   resolveStream: (db, key, id, options) => optionalPackages(db)?.find(key) ? require('../mornye/media').resolve(db, key, id, options) : resolveStream(db, key, id, options),
