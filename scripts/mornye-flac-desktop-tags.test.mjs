@@ -61,6 +61,20 @@ test('desktop metadata reader prefers timestamped native Vorbis tags over flatte
   assert.equal(meta.native.vorbis[1].value, lrc)
 })
 
+test('native embedded synced tag with [bg:] outranks a lead-only copy', () => {
+  const leadOnly = '[00:15.00]<00:15.00>Lead<00:22.00>'
+  const complete = leadOnly + '\n[bg:<00:17.00>Answer<00:18.00>]'
+  const meta = {
+    common: { lyrics: [{ text: leadOnly }] },
+    native: { vorbis: [
+      { id: 'UNSYNCEDLYRICS', value: leadOnly },
+      { id: 'LYRICS', value: complete },
+    ] },
+  }
+  assert.equal(lyricsFromMeta(meta), complete)
+  assert.equal(require('../electron/lyrics/providers/local.js').embeddedText(meta), complete)
+})
+
 test('tag editor hides the prefixed voice marker on all 61 rows without losing LRC timing', () => {
   const cleaned = lyricsForEditor(lrc)
   assert.equal(lyricsForEditor(cleaned), cleaned)
