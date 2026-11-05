@@ -111,7 +111,7 @@ function embeddedText(meta) {
     const best = synced.reduce((best, part) => bgCount(part) !== bgCount(best)
       ? (bgCount(part) > bgCount(best) ? part : best)
       : (translationLineScore(part) > translationLineScore(best) ? part : best))
-    return selectWithBacking([best, ...synced])
+    return attachBackgroundRows(best, ...synced)
   }
   return parts[0] || null
 }
@@ -184,6 +184,8 @@ function isAudioFile(filePath) {
  */
 function mergePrivateBackground(own, raw) {
   if (!raw || !Array.isArray(own?.lines)) return own
+  // Without a lead onset, timed backing voices have no meaningful anchor.
+  if (!own.lines.some(line => Number.isFinite(line?.time))) return own
   // A Vorbis field may contain *only* [bg:] events. The ordinary parser
   // rejects a lyric document with no lead, so supply a synthetic lead solely
   // to decode those independent voice events. Never return that anchor.
