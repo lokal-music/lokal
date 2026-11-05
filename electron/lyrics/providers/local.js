@@ -239,4 +239,4 @@ async function fetch(query) {
   }
 }
 
-module.exports = { fetch, readIsrc, privateLyrics, embeddedText, recoverTranslations }
+module.exports = { fetch, readIsrc, privateLyrics, embeddedText, recoverTranslations, mergePrivateBackground }
