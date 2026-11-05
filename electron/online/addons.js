@@ -22,6 +22,7 @@
 // Stored in the settings table as JSON under "addons".
 
 const crypto = require('crypto')
+const fs = require('node:fs')
 const net = require('net')
 const { headersForSignedAddon } = require('./httpAddonSigning')
 const { extractManifest, stageAddonDash } = require('./addonDash')
@@ -486,7 +487,10 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
   // Playback and download use separate intent-scoped caches.
   const cacheKey = `${key}\n${id}\n${download ? 'download' : 'stream'}`
   const cached = streamCache.get(cacheKey)
-  if (!force && cached && cached.expiresAt > Date.now()) return cached
+  // A deferred shared-cache trim may have removed a previously staged file.
+  // Never return a dead file reference from the TTL cache.
+  if (!force && cached && cached.expiresAt > Date.now() &&
+      (!cached.file || fs.existsSync(cached.file))) return cached
   if (!force && resolving.has(cacheKey)) return resolving.get(cacheKey)
   // LastWave may wrap the real audio inside "stream" and/or "data".
   // Its default format=manifest="dash" is not proof that the returned URL
