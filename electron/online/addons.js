@@ -23,6 +23,7 @@
 
 const crypto = require('crypto')
 const net = require('net')
+const { headersForSignedAddon } = require('./httpAddonSigning')
 
 const SETTINGS_KEY = 'addons'
 const TIMEOUT_MS = { manifest: 10000, search: 10000, stream: 15000, catalogue: 15000 }
@@ -31,6 +32,10 @@ const MANIFEST_MAX_AGE_MS = 6 * 60 * 60 * 1000
 const MAX_BYTES = 2 * 1024 * 1024
 const SEARCH_TTL_MS = 5 * 60 * 1000
 const STREAM_TTL_MS = 20 * 60 * 1000
+const validateSigningKey = key => {
+  if (typeof key !== 'string' || key.length > 1024 || /[\x00-\x1f\x7f]/.test(key)) throw new Error('Invalid HMAC signing key.')
+  return key
+}
 const ADAPTIVE = /\.(mpd|m3u8)(?:$|[?#])/i
 // "manifest": a DASH/HLS manifest (inline or a link) the stream needs. Some
 // addons always send the field, with "none" (or false / "") when the link is
@@ -93,10 +98,15 @@ const REDIRECT = new Set([301, 302, 303, 307, 308])
  * redirect can't lead to plain http on the internet (or anything else the
  * addon URL itself couldn't be).
  */
-async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept: 'application/json' } } = {}) {
+async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept: 'application/json' }, addonIntent = null, signingKey = '' } = {}) {
   let current = checkUrl(url)
+  const originalOrigin = current.origin
   for (let hop = 0; ; hop++) {
-    const res = await fetchImpl(current.toString(), { headers: { 'User-Agent': USER_AGENT, ...headers }, redirect: 'manual', signal })
+    // Sign only on the configured origin. A redirect cannot forward a
+    // listener's token proof to another host, even if it repeats /a/<token>.
+    const signature = current.origin === originalOrigin
+      ? headersForSignedAddon(current.toString(), { intent: addonIntent, signingKey }) : {}
+    const res = await fetchImpl(current.toString(), { headers: { 'User-Agent': USER_AGENT, ...headers, ...signature }, redirect: 'manual', signal })
     if (!REDIRECT.has(res.status)) return res
     const location = res.headers?.get?.('location')
     try { await res.body?.cancel?.() } catch {}
@@ -109,11 +119,11 @@ async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept
 }
 
 /** GET a JSON document from an addon, with a timeout and a size limit. */
-async function getJson(url, { timeoutMs, fetchImpl = fetch } = {}) {
+async function getJson(url, { timeoutMs, fetchImpl = fetch, addonIntent = null, signingKey = '' } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs || 10000)
   try {
-    const res = await fetchChecked(url, { fetchImpl, signal: controller.signal })
+    const res = await fetchChecked(url, { fetchImpl, signal: controller.signal, addonIntent, signingKey })
     const text = await res.text()
     if (text.length > MAX_BYTES) throw new Error('The addon sent too much data.')
     let json = null
@@ -180,6 +190,7 @@ function publicView(addon) {
     resources: m.resources,
     settingsSchema: Array.isArray(m.settings) ? m.settings : [],
     settings: effectiveSettings(addon),
+    hasSigningKey: !!addon.signingKey,
     enabled: addon.enabled !== false,
     host: (() => { try { return new URL(addon.baseUrl).host } catch { return '' } })(),
     installedAt: addon.installedAt || null,
@@ -204,11 +215,15 @@ function findByKey(db, key) {
  * Install (or update) an addon from its manifest URL.
  * @returns the installed addon (public view)
  */
-async function install(db, manifestUrl, { fetchImpl } = {}) {
+async function install(db, manifestUrl, { fetchImpl, signingKey = '' } = {}) {
+  validateSigningKey(signingKey)
   const url = checkUrl(manifestUrl)
   if (!/\/manifest\.json$/i.test(url.pathname)) url.pathname = `${url.pathname.replace(/\/+$/, '')}/manifest.json`
-  const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl })
-  return saveManifest(db, url, manifest)
+  const baseUrl = url.toString().replace(/\/manifest\.json(?:\?.*)?$/i, '')
+  const existing = readAll(db).find(a => a.baseUrl === baseUrl)
+  const selectedKey = signingKey || existing?.signingKey || ''
+  const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl, signingKey: selectedKey })
+  return saveManifest(db, url, manifest, { signingKey: selectedKey })
 }
 
 /**
@@ -222,7 +237,7 @@ function freshUrl(url) {
   return fresh.toString()
 }
 
-function saveManifest(db, url, manifest) {
+function saveManifest(db, url, manifest, { signingKey } = {}) {
   const resources = Array.isArray(manifest.resources) ? manifest.resources.filter(r => typeof r === 'string') : []
   if (!manifest.id || !manifest.name || !manifest.version) throw new Error('This is not an addon manifest (id, name and version are required).')
   if (!resources.includes('search') || !resources.includes('stream')) throw new Error('This addon cannot search and stream tracks, so Lokal cannot use it.')
@@ -240,7 +255,7 @@ function saveManifest(db, url, manifest) {
   const baseUrl = url.toString().replace(/\/manifest\.json(?:\?.*)?$/i, '')
   const all = readAll(db)
   const existing = all.find(a => a.key === key)
-  const addon = { key, baseUrl, manifest: clean, enabled: existing ? existing.enabled !== false : true, settings: existing?.settings || {}, installedAt: existing?.installedAt || Date.now(), manifestAt: Date.now() }
+  const addon = { key, baseUrl, manifest: clean, enabled: existing ? existing.enabled !== false : true, settings: existing?.settings || {}, signingKey: signingKey === undefined ? existing?.signingKey || '' : validateSigningKey(signingKey), installedAt: existing?.installedAt || Date.now(), manifestAt: Date.now() }
   // Updating keeps its place among the addons (the playback order lists them).
   writeAll(db, existing ? all.map(a => (a.key === key ? addon : a)) : [...all, addon])
   return publicView(addon)
@@ -258,7 +273,7 @@ async function refreshManifests(db, { fetchImpl, maxAgeMs = MANIFEST_MAX_AGE_MS 
     refreshing.add(addon.key)
     try {
       const url = new URL(`${addon.baseUrl}/manifest.json`)
-      const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl })
+      const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl, signingKey: addon.signingKey || '' })
       // The same addon only: a manifest that changed its id is a different one.
       if (addonKey(String(manifest?.id || '').slice(0, 200)) === addon.key) saveManifest(db, url, manifest)
     } catch {} finally { refreshing.delete(addon.key) }
@@ -277,13 +292,14 @@ function setEnabled(db, key, enabled) {
 }
 
 /** Save the user's values for an addon's settings (only keys its manifest declares). */
-function setSettings(db, key, values = {}) {
+function setSettings(db, key, values = {}, { signingKey } = {}) {
+  if (signingKey !== undefined) validateSigningKey(signingKey)
   writeAll(db, readAll(db).map(a => {
     if (a.key !== key) return a
     const allowed = new Set((a.manifest.settings || []).map(f => f?.key).filter(Boolean))
     const next = {}
     for (const [k, v] of Object.entries(values || {})) if (allowed.has(k)) next[k] = typeof v === 'boolean' || typeof v === 'number' ? v : String(v ?? '').slice(0, 500)
-    return { ...a, settings: next }
+    return { ...a, settings: next, signingKey: signingKey === undefined ? a.signingKey || '' : signingKey }
   }))
   return { ok: true }
 }
@@ -356,9 +372,10 @@ async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEO
   const cacheKey = `${key}\n${q.toLowerCase()}`
   const cached = searchCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SEARCH_TTL_MS) return cached.results.slice(0, limit)
-  const json = await getJson(endpoint(addon, '/search', { q }), { timeoutMs, fetchImpl })
+  const json = await getJson(endpoint(addon, '/search', { q }), { timeoutMs, fetchImpl, addonIntent: 'stream', signingKey: addon.signingKey || '' })
   const provider = providerFor(key)
-  const results = (Array.isArray(json.tracks) ? json.tracks : [])
+  const rows = [json.tracks, json.data?.tracks, json.results, json.items].find(Array.isArray) || []
+  const results = rows
     .filter(t => t && t.id != null && t.title)
     .map(t => {
       return trackOf(t, provider)
@@ -377,7 +394,7 @@ async function catalogue(db, key, resource, id, { fetchImpl } = {}) {
   const cacheKey = `${key}\n${path}`
   const cached = catalogueCache.get(cacheKey)
   if (cached && Date.now() - cached.at < CATALOGUE_TTL_MS) return cached.value
-  const json = await getJson(endpoint(addon, path), { timeoutMs: TIMEOUT_MS.catalogue, fetchImpl })
+  const json = await getJson(endpoint(addon, path), { timeoutMs: TIMEOUT_MS.catalogue, fetchImpl, addonIntent: 'stream', signingKey: addon.signingKey || '' })
   if (catalogueCache.size > 100) catalogueCache.delete(catalogueCache.keys().next().value)
   catalogueCache.set(cacheKey, { at: Date.now(), value: json })
   return json
@@ -461,19 +478,33 @@ function streamFormat(json, url) {
 }
 
 /** The audio URL for an addon track (from its /stream), cached until it expires. */
-async function resolveStream(db, key, id, { fetchImpl, force = false, timeoutMs = TIMEOUT_MS.stream } = {}) {
+async function resolveStream(db, key, id, { fetchImpl, force = false, download = false, timeoutMs = TIMEOUT_MS.stream } = {}) {
   const addon = findByKey(db, key)
   if (!addon || addon.enabled === false) throw new Error('This addon is not installed or is turned off.')
-  const cacheKey = `${key}\n${id}`
+  // Playback and download use separate intent-scoped caches.
+  const cacheKey = `${key}\n${id}\n${download ? 'download' : 'stream'}`
   const cached = streamCache.get(cacheKey)
   if (!force && cached && cached.expiresAt > Date.now()) return cached
   if (!force && resolving.has(cacheKey)) return resolving.get(cacheKey)
-  const job = getJson(endpoint(addon, `/stream/${encodeURIComponent(id)}`), { timeoutMs, fetchImpl })
-    .then(json => {
+  const job = getJson(endpoint(addon, `/stream/${encodeURIComponent(id)}`), { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream', signingKey: addon.signingKey || '' })
+    .then(raw => {
+      // Some add-on providers duplicate or nest the stream under "data".
+      const json = raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)
+        ? { ...raw, ...raw.data } : raw
+      for (const layer of [raw, json]) {
+        if (layer.encrypted != null && layer.encrypted !== false)
+          throw new Error('This addon only gave an encrypted stream for this track, which Lokal cannot play.')
+        if (layer.drm != null && layer.drm !== false)
+          throw new Error('This addon requires DRM, which Lokal cannot play.')
+        if (layer.headers && Object.keys(layer.headers).length)
+          throw new Error('This addon requires unsupported media headers.')
+        if (needsManifest(layer.manifest))
+          throw new Error('This addon streams in a format Lokal cannot play yet (DASH/HLS).')
+      }
       let url
-      try { url = checkUrl(json.url).toString() } catch { throw new Error('The addon gave no playable link for this track.') }
-      if (ADAPTIVE.test(url) || needsManifest(json.manifest)) throw new Error('This addon streams in a format Lokal cannot play yet (DASH/HLS).')
-      if (json.encrypted === true) throw new Error('This addon only gave an encrypted stream for this track, which Lokal cannot play.')
+      try { url = checkUrl(json.url || json.directUrl || json.streamUrl || json.downloadUrl || json.mediaUrl).toString() }
+      catch { throw new Error('The addon gave no playable link for this track.') }
+      if (ADAPTIVE.test(url)) throw new Error('This addon streams in a format Lokal cannot play yet (DASH/HLS).')
       const format = streamFormat(json, url)
       const expires = Number(json.expiresAt) > 0 ? Number(json.expiresAt) * (Number(json.expiresAt) < 1e12 ? 1000 : 1) - 60000 : Date.now() + STREAM_TTL_MS
       const stream = { url, headers: {}, mime: MIME[format] || 'audio/*', expiresAt: Math.max(Date.now() + 30000, expires), format: format || null, quality: json.quality || null }
@@ -493,7 +524,7 @@ module.exports = {
   install: (db, url, options) => /\.(sflx|spotiflac-ext)(?:[?#]|$)/i.test(String(url)) ? packageService(db).install({ url }) : install(db, url, options),
   remove: (db, key) => optionalPackages(db)?.find(key) ? packageService(db).remove(key) : remove(db, key),
   setEnabled: (db, key, enabled) => optionalPackages(db)?.find(key) ? packageService(db).setEnabled(key, enabled) : setEnabled(db, key, enabled),
-  setSettings: (db, key, values) => optionalPackages(db)?.find(key) ? packageService(db).setSettings(key, values) : setSettings(db, key, values),
+  setSettings: (db, key, values, options) => optionalPackages(db)?.find(key) ? packageService(db).setSettings(key, values) : setSettings(db, key, values, options),
   refreshManifests,
   search: (db, key, query, options) => optionalPackages(db)?.find(key) ? packageService(db).search(key, query, options) : search(db, key, query, options),
   resolveStream: (db, key, id, options) => optionalPackages(db)?.find(key) ? require('../mornye/media').resolve(db, key, id, options) : resolveStream(db, key, id, options),

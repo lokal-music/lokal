@@ -70,7 +70,7 @@ async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, l
 function resolveStream(provider, id, opts = {}) {
   if (!validId(provider, id)) return Promise.reject(new Error('Unknown online song'))
   const key = addons.keyOfProvider(provider)
-  if (key) return addons.resolveStream(opts.db, key, id, { force: opts.force, fetchImpl: opts.addonFetch, signal: opts.signal, timeoutMs: opts.addonTimeoutMs })
+  if (key) return addons.resolveStream(opts.db, key, id, { force: opts.force, download: opts.download, fetchImpl: opts.addonFetch, signal: opts.signal, timeoutMs: opts.addonTimeoutMs })
   if (provider === 'mono') return mono.resolveStream(id)
   return provider === 'sc' ? sc.resolveStream(id, opts) : yt.resolveStream(id, opts)
 }
