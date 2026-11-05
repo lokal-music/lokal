@@ -123,6 +123,9 @@ function parseMeta(row) {
 function writeRow(db, trackId, filePath, result, extra = {}) {
   const meta = {
     v: META_VERSION,
+    // The standalone enhanced-LRC backing-voice parser was introduced after
+    // earlier synced local entries were persisted without their background.
+    bgLrcChecked: true,
     sync: result?.sync || null,
     duet: !!result?.duet,
     isrc: result?.isrc || null,
@@ -296,6 +299,11 @@ async function getLyrics(db, args) {
           const pinned = fromRow(row, meta, db)
           if (trackId && row.track_id !== trackId) writeRow(db, trackId, filePath, pinned, { attempts: meta.attempts, pinned: true })
           return pinned
+        } else if (row.source === 'local' && !meta.bgLrcChecked && filePath) {
+          // Existing word-timed local cache rows can be missing every [bg:]
+          // supporting vocal. Re-read the embedded source once after upgrade;
+          // keep the cached result if the file is unavailable or unchanged.
+          cachedLocalLyrics = fromRow(row, meta, db)
         } else if (row.source === 'local' && row.lyrics_type !== 'synced') {
           // The song's own lyrics, saved unsynced: read again, so a file whose
           // timed lyrics were missed before (two lyrics tags, a SYLT frame)
@@ -330,7 +338,14 @@ async function getLyrics(db, args) {
     settings,
   )
   if (!trackId) return result
-  const preferred = retainBetterLyrics(cachedLocalLyrics, result)
+  // A newly decoded local file with real backing vocals must supersede the
+  // equally ranked legacy cached lead-only version; quality ranking alone
+  // cannot see that the latter silently omitted the supporting voice.
+  const recoveredBackground = cachedLocalLyrics && result?.source === 'local' &&
+    result.lines?.some(line => line.bgText || line.bgWords?.length) &&
+    !cachedLocalLyrics.lines?.some(line => line.bgText || line.bgWords?.length) &&
+    lyricsQualityRank(result) >= lyricsQualityRank(cachedLocalLyrics)
+  const preferred = recoveredBackground ? result : retainBetterLyrics(cachedLocalLyrics, result)
   if (cachedLocalLyrics && preferred === cachedLocalLyrics) {
     const merged = { ...(cachedLocalLyrics.attempts || {}), ...attempts }
     writeRow(db, trackId, filePath, cachedLocalLyrics, { attempts: merged })

@@ -142,6 +142,30 @@ function parseEnhancedLRC(text) {
     const line = rawLine.trim()
     if (!line) { previous = []; continue }
     if (META_TAG.test(line)) { previous = []; continue }
+
+    // Enhanced LRC can carry a separately timestamped backing voice directly
+    // after its lead line: [bg:<mm:ss.xxx>word ... <end>].
+    // It has no [mm:ss] line stamp of its own and must not become a translation.
+    const backing = line.match(/^\[bg\s*:(.*)\]$/i)
+    if (backing) {
+      if (previous.length) {
+        WORD_STAMP.lastIndex = 0
+        const first = WORD_STAMP.exec(backing[1])
+        if (first) {
+          const synthetic = `[${first[1]}:${first[2]}.${first[3] || '00'}]${backing[1]}`
+          const parsed = parseEnhancedLRC(
+            `${offset ? `[offset:${Math.round(offset * 1000)}]\n` : ''}${synthetic}`
+          )[0]
+          if (parsed?.text) {
+            const lead = previous[0]
+            lead.bgText = lead.bgText ? `${lead.bgText} ${parsed.text}` : parsed.text
+            lead.bgWords = [...(lead.bgWords || []), ...parsed.words]
+          }
+        }
+      }
+      continue
+    }
+
     LINE_STAMP.lastIndex = 0
     const lm = LINE_STAMP.exec(line)
     if (!lm || lm.index !== 0) {
