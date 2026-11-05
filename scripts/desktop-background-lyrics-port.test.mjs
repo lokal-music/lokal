@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
 const { fromVorbisCommentBlock, readFlacLyrics, selectWithBacking, attachBackgroundRows } =
   require('../electron/lyrics/flacVorbis.js')
 const { parseEnhancedLRC } = require('../electron/lyrics/lrc.js')
-const { fetch: localLyrics } = require('../electron/lyrics/providers/local.js')
+const { fetch: localLyrics, mergePrivateBackground } = require('../electron/lyrics/providers/local.js')
 
 const lead = [
   '[00:15.433]<00:15.433>Lead <00:16.353>voice <00:22.852>',
@@ -70,6 +70,20 @@ test('sidecars keep authority over lead but borrow distinct embedded bg rows', (
   assert.equal(combined.split('[bg:').length-1,1)
   assert.ok(combined.startsWith(lead))
   assert.equal(selectWithBacking([lead,bg]).split('[bg:').length-1,1)
+})
+
+test('an online lead keeps its precise word timings while FLAC adds backing vocals', () => {
+  const primary=parseEnhancedLRC(lead)
+  const originalWords=JSON.stringify(primary[0].words)
+  const enriched=mergePrivateBackground({source:'online',lines:primary},bg)
+  assert.equal(enriched.source,'online')
+  assert.equal(enriched.lines.length,primary.length)
+  assert.equal(JSON.stringify(enriched.lines[0].words),originalWords)
+  assert.equal(enriched.lines[0].bgText,'Backing voice')
+  assert.equal(enriched.lines[0].bgWords.at(-1).end,26.736)
+  // Retrying the same FLAC merge should not duplicate a singer.
+  const again=mergePrivateBackground(enriched,bg)
+  assert.equal(again.lines[0].bgText,'Backing voice')
 })
 
 test('backing singer survives subsequent lead focus and stops at own word end', () => {
