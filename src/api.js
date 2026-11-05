@@ -493,10 +493,10 @@ export const api = {
   // An addon's album / artist page (when its manifest lists "album" / "artist").
   addonAlbum: (provider, id) => isE() ? el().addonAlbum(provider, id) : apiFetch(`/online/addon-album/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`),
   addonArtist: (provider, id) => isE() ? el().addonArtist(provider, id) : apiFetch(`/online/addon-artist/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`),
-  addonsInstall: (url) => isE() ? el().addonsInstall(url) : apiFetch('/online/addons', { method:'POST', body:{ url } }),
+  addonsInstall: (url, options = {}) => isE() ? el().addonsInstall(url, options) : apiFetch('/online/addons', { method:'POST', body:{ url, ...options } }),
   addonsRemove: (key) => isE() ? el().addonsRemove(key) : apiFetch(`/online/addons/${encodeURIComponent(key)}`, { method:'DELETE' }),
   addonsSetEnabled: (key, enabled) => isE() ? el().addonsSetEnabled(key, enabled) : apiFetch(`/online/addons/${encodeURIComponent(key)}/enabled`, { method:'PUT', body:{ enabled } }),
-  addonsSetSettings: (key, values) => isE() ? el().addonsSetSettings(key, values) : apiFetch(`/online/addons/${encodeURIComponent(key)}/settings`, { method:'PUT', body:{ values } }),
+  addonsSetSettings: (key, values, options = {}) => isE() ? el().addonsSetSettings(key, values, options) : apiFetch(`/online/addons/${encodeURIComponent(key)}/settings`, { method:'PUT', body:{ values, ...options } }),
   addonsPackages: request => isE() ? el().addonsPackages(request) : apiFetch('/online/addons/packages', { method:'POST', body:request }),
   // An addon's access was checked again (its login window closed). Desktop only.
   onAddonAuthChanged: fn => isE() && el().onAddonAuthChanged ? el().onAddonAuthChanged(fn) : () => {},

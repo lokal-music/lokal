@@ -7,7 +7,7 @@ const addons = require('../electron/online/addons.js')
 const { headersForSignedAddon } = require('../electron/online/httpAddonSigning.js')
 const KEY = 'unit-test-only-key'
 // Test fixture key: release builds default to unsigned requests.
-process.env.HTTP_ADDON_SIGNING_KEY = KEY
+// Integration tests inject a fixture key into one add-on only.
 
 function db() {
   const rows = new Map()
@@ -46,7 +46,7 @@ test('Signed add-on manifest, search, playback and download requests use the cor
     return json({ data: { directUrl: 'https://cdn.example/recording.flac', format: 'flac', quality: 'LOSSLESS' } })
   }
 
-  const installed = await addons.install(database, 'https://addons.example/a/abc123/manifest.json', { fetchImpl })
+  const installed = await addons.install(database, 'https://addons.example/a/abc123/manifest.json', { fetchImpl, signingKey: KEY })
   const found = await addons.search(database, installed.key, 'Track', { fetchImpl })
   assert.equal(found.length, 1)
   const stream = await addons.resolveStream(database, installed.key, 'recording', { fetchImpl })
@@ -70,6 +70,7 @@ test('unsigned HTTP addons remain unsigned and signatures do not cross redirect 
   assert.equal(normal.id, 'normal')
   let hops = 0
   await addons.fetchChecked('https://addons.example/a/abc123/manifest.json', {
+    signingKey: KEY,
     fetchImpl: async (_url, options) => {
       hops++
       if (hops === 1) {
@@ -81,4 +82,30 @@ test('unsigned HTTP addons remain unsigned and signatures do not cross redirect 
     },
   })
   assert.equal(hops, 2)
+})
+
+
+test('per-add-on keys are redacted, scoped, replaceable and removable', async () => {
+  const database = db()
+  const calls = []
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, headers: options.headers })
+    if (url.includes('/manifest.json')) return json({ id: url.includes('/abc123/') ? 'signed-fixture' : 'unsigned-fixture', name: 'Fixture', version: '1', resources: ['search', 'stream'] })
+    return json({ tracks: [{ id: 'song', title: 'Track', artist: 'Artist' }] })
+  }
+  const signed = await addons.install(database, 'https://addons.example/a/abc123/manifest.json', { fetchImpl, signingKey: KEY })
+  const plain = await addons.install(database, 'https://other.example/a/def456/manifest.json', { fetchImpl })
+  assert.equal(signed.hasSigningKey, true)
+  assert.equal(plain.hasSigningKey, false)
+  assert.ok(!JSON.stringify(addons.list(database)).includes(KEY))
+  await addons.search(database, signed.key, 'first', { fetchImpl })
+  await addons.search(database, plain.key, 'first', { fetchImpl })
+  assert.ok(calls.find(c => c.url.includes('/a/abc123/search')).headers['X-LW-Sign'])
+  assert.equal(calls.find(c => c.url.includes('/a/def456/search')).headers['X-LW-Sign'], undefined)
+  addons.setSettings(database, signed.key, {}, { signingKey: 'rotated-test-key' })
+  await addons.search(database, signed.key, 'second', { fetchImpl })
+  assert.ok(calls.filter(c => c.url.includes('/a/abc123/search')).at(-1).headers['X-LW-Sign'])
+  addons.setSettings(database, signed.key, {}, { signingKey: '' })
+  await addons.search(database, signed.key, 'third', { fetchImpl })
+  assert.equal(calls.filter(c => c.url.includes('/a/abc123/search')).at(-1).headers['X-LW-Sign'], undefined)
 })

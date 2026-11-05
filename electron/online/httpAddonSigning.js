@@ -6,7 +6,7 @@ const crypto = require('node:crypto')
 
 const DEFAULT_SIGNING_KEY = ''
 
-function headersForSignedAddon(address, { intent = null, nowMs = Date.now(), signingKey = process.env.HTTP_ADDON_SIGNING_KEY || DEFAULT_SIGNING_KEY } = {}) {
+function headersForSignedAddon(address, { intent = null, nowMs = Date.now(), signingKey = DEFAULT_SIGNING_KEY } = {}) {
   let url, token, path
   try {
     url = new URL(address)

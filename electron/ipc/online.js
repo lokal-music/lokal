@@ -273,13 +273,13 @@ function registerOnlineHandlers(ipcMain) {
     if (!key) return { error: 'Not an addon.' }
     try { return await sources.addons.artist(getDB(), key, id) } catch (e) { return { error: e.message } }
   })
-  ipcMain.handle('addons:install', async (_, url) => {
-    try { return await sources.addons.install(getDB(), url) } catch (e) { return { error: e.message } }
+  ipcMain.handle('addons:install', async (_, url, options) => {
+    try { return await sources.addons.install(getDB(), url, { signingKey: options?.signingKey || '' }) } catch (e) { return { error: e.message } }
   })
   const addonRequest = async work => { try { return await work() } catch (e) { return { error: e.message } } }
   ipcMain.handle('addons:remove', (_, key) => addonRequest(() => sources.addons.remove(getDB(), key)))
   ipcMain.handle('addons:setEnabled', (_, key, enabled) => addonRequest(() => sources.addons.setEnabled(getDB(), key, enabled)))
-  ipcMain.handle('addons:setSettings', (_, key, values) => addonRequest(() => sources.addons.setSettings(getDB(), key, values)))
+  ipcMain.handle('addons:setSettings', (_, key, values, options) => addonRequest(() => sources.addons.setSettings(getDB(), key, values, options)))
   ipcMain.handle('addons:packages', (event, request) => {
     if (event.senderFrame !== event.sender.mainFrame) return { error: 'Addon management requires the main application frame' }
     return addonRequest(() => require('../mornye/api').dispatch(getDB(), request))

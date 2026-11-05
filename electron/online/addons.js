@@ -32,6 +32,10 @@ const MANIFEST_MAX_AGE_MS = 6 * 60 * 60 * 1000
 const MAX_BYTES = 2 * 1024 * 1024
 const SEARCH_TTL_MS = 5 * 60 * 1000
 const STREAM_TTL_MS = 20 * 60 * 1000
+const validateSigningKey = key => {
+  if (typeof key !== 'string' || key.length > 1024 || /[\x00-\x1f\x7f]/.test(key)) throw new Error('Invalid HMAC signing key.')
+  return key
+}
 const ADAPTIVE = /\.(mpd|m3u8)(?:$|[?#])/i
 // "manifest": a DASH/HLS manifest (inline or a link) the stream needs. Some
 // addons always send the field, with "none" (or false / "") when the link is
@@ -94,14 +98,14 @@ const REDIRECT = new Set([301, 302, 303, 307, 308])
  * redirect can't lead to plain http on the internet (or anything else the
  * addon URL itself couldn't be).
  */
-async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept: 'application/json' }, addonIntent = null } = {}) {
+async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept: 'application/json' }, addonIntent = null, signingKey = '' } = {}) {
   let current = checkUrl(url)
   const originalOrigin = current.origin
   for (let hop = 0; ; hop++) {
     // Sign only on the configured origin. A redirect cannot forward a
     // listener's token proof to another host, even if it repeats /a/<token>.
     const signature = current.origin === originalOrigin
-      ? headersForSignedAddon(current.toString(), { intent: addonIntent }) : {}
+      ? headersForSignedAddon(current.toString(), { intent: addonIntent, signingKey }) : {}
     const res = await fetchImpl(current.toString(), { headers: { 'User-Agent': USER_AGENT, ...headers, ...signature }, redirect: 'manual', signal })
     if (!REDIRECT.has(res.status)) return res
     const location = res.headers?.get?.('location')
@@ -115,11 +119,11 @@ async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept
 }
 
 /** GET a JSON document from an addon, with a timeout and a size limit. */
-async function getJson(url, { timeoutMs, fetchImpl = fetch, addonIntent = null } = {}) {
+async function getJson(url, { timeoutMs, fetchImpl = fetch, addonIntent = null, signingKey = '' } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs || 10000)
   try {
-    const res = await fetchChecked(url, { fetchImpl, signal: controller.signal, addonIntent })
+    const res = await fetchChecked(url, { fetchImpl, signal: controller.signal, addonIntent, signingKey })
     const text = await res.text()
     if (text.length > MAX_BYTES) throw new Error('The addon sent too much data.')
     let json = null
@@ -186,6 +190,7 @@ function publicView(addon) {
     resources: m.resources,
     settingsSchema: Array.isArray(m.settings) ? m.settings : [],
     settings: effectiveSettings(addon),
+    hasSigningKey: !!addon.signingKey,
     enabled: addon.enabled !== false,
     host: (() => { try { return new URL(addon.baseUrl).host } catch { return '' } })(),
     installedAt: addon.installedAt || null,
@@ -210,11 +215,15 @@ function findByKey(db, key) {
  * Install (or update) an addon from its manifest URL.
  * @returns the installed addon (public view)
  */
-async function install(db, manifestUrl, { fetchImpl } = {}) {
+async function install(db, manifestUrl, { fetchImpl, signingKey = '' } = {}) {
+  validateSigningKey(signingKey)
   const url = checkUrl(manifestUrl)
   if (!/\/manifest\.json$/i.test(url.pathname)) url.pathname = `${url.pathname.replace(/\/+$/, '')}/manifest.json`
-  const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl })
-  return saveManifest(db, url, manifest)
+  const baseUrl = url.toString().replace(/\/manifest\.json(?:\?.*)?$/i, '')
+  const existing = readAll(db).find(a => a.baseUrl === baseUrl)
+  const selectedKey = signingKey || existing?.signingKey || ''
+  const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl, signingKey: selectedKey })
+  return saveManifest(db, url, manifest, { signingKey: selectedKey })
 }
 
 /**
@@ -228,7 +237,7 @@ function freshUrl(url) {
   return fresh.toString()
 }
 
-function saveManifest(db, url, manifest) {
+function saveManifest(db, url, manifest, { signingKey } = {}) {
   const resources = Array.isArray(manifest.resources) ? manifest.resources.filter(r => typeof r === 'string') : []
   if (!manifest.id || !manifest.name || !manifest.version) throw new Error('This is not an addon manifest (id, name and version are required).')
   if (!resources.includes('search') || !resources.includes('stream')) throw new Error('This addon cannot search and stream tracks, so Lokal cannot use it.')
@@ -246,7 +255,7 @@ function saveManifest(db, url, manifest) {
   const baseUrl = url.toString().replace(/\/manifest\.json(?:\?.*)?$/i, '')
   const all = readAll(db)
   const existing = all.find(a => a.key === key)
-  const addon = { key, baseUrl, manifest: clean, enabled: existing ? existing.enabled !== false : true, settings: existing?.settings || {}, installedAt: existing?.installedAt || Date.now(), manifestAt: Date.now() }
+  const addon = { key, baseUrl, manifest: clean, enabled: existing ? existing.enabled !== false : true, settings: existing?.settings || {}, signingKey: signingKey === undefined ? existing?.signingKey || '' : validateSigningKey(signingKey), installedAt: existing?.installedAt || Date.now(), manifestAt: Date.now() }
   // Updating keeps its place among the addons (the playback order lists them).
   writeAll(db, existing ? all.map(a => (a.key === key ? addon : a)) : [...all, addon])
   return publicView(addon)
@@ -264,7 +273,7 @@ async function refreshManifests(db, { fetchImpl, maxAgeMs = MANIFEST_MAX_AGE_MS 
     refreshing.add(addon.key)
     try {
       const url = new URL(`${addon.baseUrl}/manifest.json`)
-      const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl })
+      const manifest = await getJson(freshUrl(url), { timeoutMs: TIMEOUT_MS.manifest, fetchImpl, signingKey: addon.signingKey || '' })
       // The same addon only: a manifest that changed its id is a different one.
       if (addonKey(String(manifest?.id || '').slice(0, 200)) === addon.key) saveManifest(db, url, manifest)
     } catch {} finally { refreshing.delete(addon.key) }
@@ -283,13 +292,14 @@ function setEnabled(db, key, enabled) {
 }
 
 /** Save the user's values for an addon's settings (only keys its manifest declares). */
-function setSettings(db, key, values = {}) {
+function setSettings(db, key, values = {}, { signingKey } = {}) {
+  if (signingKey !== undefined) validateSigningKey(signingKey)
   writeAll(db, readAll(db).map(a => {
     if (a.key !== key) return a
     const allowed = new Set((a.manifest.settings || []).map(f => f?.key).filter(Boolean))
     const next = {}
     for (const [k, v] of Object.entries(values || {})) if (allowed.has(k)) next[k] = typeof v === 'boolean' || typeof v === 'number' ? v : String(v ?? '').slice(0, 500)
-    return { ...a, settings: next }
+    return { ...a, settings: next, signingKey: signingKey === undefined ? a.signingKey || '' : signingKey }
   }))
   return { ok: true }
 }
@@ -362,7 +372,7 @@ async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEO
   const cacheKey = `${key}\n${q.toLowerCase()}`
   const cached = searchCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SEARCH_TTL_MS) return cached.results.slice(0, limit)
-  const json = await getJson(endpoint(addon, '/search', { q }), { timeoutMs, fetchImpl, addonIntent: 'stream' })
+  const json = await getJson(endpoint(addon, '/search', { q }), { timeoutMs, fetchImpl, addonIntent: 'stream', signingKey: addon.signingKey || '' })
   const provider = providerFor(key)
   const rows = [json.tracks, json.data?.tracks, json.results, json.items].find(Array.isArray) || []
   const results = rows
@@ -384,7 +394,7 @@ async function catalogue(db, key, resource, id, { fetchImpl } = {}) {
   const cacheKey = `${key}\n${path}`
   const cached = catalogueCache.get(cacheKey)
   if (cached && Date.now() - cached.at < CATALOGUE_TTL_MS) return cached.value
-  const json = await getJson(endpoint(addon, path), { timeoutMs: TIMEOUT_MS.catalogue, fetchImpl, addonIntent: 'stream' })
+  const json = await getJson(endpoint(addon, path), { timeoutMs: TIMEOUT_MS.catalogue, fetchImpl, addonIntent: 'stream', signingKey: addon.signingKey || '' })
   if (catalogueCache.size > 100) catalogueCache.delete(catalogueCache.keys().next().value)
   catalogueCache.set(cacheKey, { at: Date.now(), value: json })
   return json
@@ -476,7 +486,7 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
   const cached = streamCache.get(cacheKey)
   if (!force && cached && cached.expiresAt > Date.now()) return cached
   if (!force && resolving.has(cacheKey)) return resolving.get(cacheKey)
-  const job = getJson(endpoint(addon, `/stream/${encodeURIComponent(id)}`), { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream' })
+  const job = getJson(endpoint(addon, `/stream/${encodeURIComponent(id)}`), { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream', signingKey: addon.signingKey || '' })
     .then(raw => {
       // Some add-on providers duplicate or nest the stream under "data".
       const json = raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)

@@ -112,13 +112,13 @@ for (const [path, read] of [['addon-album', 'album'], ['addon-artist', 'artist']
   })
 }
 router.post('/addons', async (req, res) => {
-  try { res.json(await sources.addons.install(getDB(), req.body?.url)) } catch (e) { res.status(400).json({ error: e.message }) }
+  try { res.json(await sources.addons.install(getDB(), req.body?.url, { signingKey: req.body?.signingKey || '' })) } catch (e) { res.status(400).json({ error: e.message }) }
 })
 const addonRequest = work => async (req, res) => { try { res.json(await work(req)) } catch (e) { res.status(400).json({ error: e.message }) } }
 router.post('/addons/packages', addonRequest(req => require('../../electron/spotiflac/api').dispatch(getDB(), req.body)))
 router.delete('/addons/:key', addonRequest(req => sources.addons.remove(getDB(), req.params.key)))
 router.put('/addons/:key/enabled', addonRequest(req => sources.addons.setEnabled(getDB(), req.params.key, !!req.body?.enabled)))
-router.put('/addons/:key/settings', addonRequest(req => sources.addons.setSettings(getDB(), req.params.key, req.body?.values || {})))
+router.put('/addons/:key/settings', addonRequest(req => sources.addons.setSettings(getDB(), req.params.key, req.body?.values || {}, { signingKey: req.body?.signingKey })))
 
 router.post('/save', (req, res) => {
   try {
