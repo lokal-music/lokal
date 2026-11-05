@@ -41,7 +41,7 @@ function flac(block) {
 test('mobile-style FLAC Vorbis parser retains separately stored backing vocals', () => {
   const bytes=commentBlock([['LYRICS',lead],['UNSYNCEDLYRICS',bg]])
   const selected=fromVorbisCommentBlock(bytes)
-  assert.ok(selected.includes('Lead voice'))
+  assert.ok(selected.includes('<00:15.433>Lead '))
   assert.ok(selected.includes(bg))
   const parsed=parseEnhancedLRC(selected)
   assert.equal(parsed.length,2)
