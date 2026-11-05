@@ -9,7 +9,7 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const { Readable } = require('node:stream')
 const { pipeline } = require('node:stream/promises')
-const { cacheDir } = require('../cache')
+const os = require('node:os')
 
 const MAX_MPD_BYTES = 1024 * 1024
 const MAX_SEGMENTS = 512
@@ -151,7 +151,7 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
     xml = data.toString('utf8')
   }
   const plan = parseStaticMpd(xml, manifest.base, addonBase)
-  const dir = cacheDir('playback')
+  const dir = require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache')
   await fsp.mkdir(dir, { recursive: true })
   const digest = crypto.createHash('sha256').update(key + '\n' + xml).digest('hex').slice(0, 24)
   const dest = path.join(dir, 'addon-dash-' + digest + '.m4a')
