@@ -191,7 +191,7 @@ function mergePrivateBackground(own, raw) {
   const standalone = parser(raw)?.lines || []
   const parsed = standalone.some(line => line.bgText)
     ? standalone
-    : parser('[00:00.000]Lokal backing anchor\n' + raw)?.lines || standalone
+    : parser('[00:00.000]<00:00.000>Lokal <00:00.100>anchor <00:00.200>\n' + raw)?.lines || standalone
   const extras = []
   for (const line of parsed) {
     if (!line?.bgText) continue
