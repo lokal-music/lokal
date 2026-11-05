@@ -12,25 +12,38 @@
  * A pending request is never flushed for an idle state that existed before
  * playback began: the newly staged recording may still be about to start.
  */
-function createDeferredTrimmer({ trim, getState, subscribe }) {
+function createDeferredTrimmer({ trim, getState, subscribe, schedule = (fn, ms) => setTimeout(fn, ms), cancel = clearTimeout }) {
   let pending = false
   let hadSelectedTrack = false
+  let timer = null
+  const cancelGracePeriod = () => {
+    if (timer != null) cancel(timer)
+    timer = null
+  }
   const onState = (state) => {
     if (!pending || !state?.connected) return
-    if (state.currentTrack) {
-      hadSelectedTrack = true
+    if (state.currentTrack || state.isPlaying) {
+      if (state.currentTrack) hadSelectedTrack = true
+      cancelGracePeriod()
       return
     }
-    if (!hadSelectedTrack || state.isPlaying) return
-    // All selected playback has ended, including tracks changed in between.
-    // Keep the pending request if shared cache I/O itself fails.
-    try {
-      trim()
-      pending = false
-      hadSelectedTrack = false
-    } catch {
-      // Retry on the next idle state or the next app launch.
-    }
+    if (!hadSelectedTrack || timer != null) return
+    // Transitioning between tracks can briefly report no selected track.
+    // Require a sustained idle state, giving Chromium time to close the
+    // outgoing song's media handles before evicting anything.
+    timer = schedule(() => {
+      timer = null
+      const latest = getState()
+      if (!pending || !latest?.connected || latest.currentTrack || latest.isPlaying) return
+      try {
+        trim()
+        pending = false
+        hadSelectedTrack = false
+      } catch {
+        // Retry on a later idle update or trim during the next cold startup.
+      }
+    }, 5000)
+    timer?.unref?.()
   }
   subscribe(onState)
   return {
@@ -41,7 +54,6 @@ function createDeferredTrimmer({ trim, getState, subscribe }) {
     get pending() { return pending },
   }
 }
-
 let singleton = null
 function requestTrimAfterPlayback() {
   if (!singleton) {
