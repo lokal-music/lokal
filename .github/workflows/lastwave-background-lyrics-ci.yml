@@ -1,0 +1,55 @@
+name: Desktop LastWave and background lyrics
+on:
+  pull_request:
+    paths:
+      - 'electron/online/addons.js'
+      - 'electron/online/addonDash.js'
+      - 'electron/online/addonHybrid.js'
+      - 'electron/online/addonHybridCenc.js'
+      - 'electron/lyrics/flacVorbis.js'
+      - 'electron/lyrics/providers/local.js'
+      - 'electron/lyrics/service.js'
+      - 'src/lyrics/supportingVocals.mjs'
+      - 'src/components/LyricsPanel.jsx'
+      - 'scripts/lastwave-desktop-port.test.mjs'
+      - 'scripts/lastwave-hybrid-cenc.test.mjs'
+      - 'scripts/desktop-background-lyrics-port.test.mjs'
+      - '.github/workflows/lastwave-background-lyrics-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  port-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify backend syntax
+        run: |
+          node --check electron/online/addons.js
+          node --check electron/online/addonDash.js
+          node --check electron/online/addonHybrid.js
+          node --check electron/online/addonHybridCenc.js
+          node --check electron/lyrics/flacVorbis.js
+          node --check electron/lyrics/providers/local.js
+          node --check electron/lyrics/service.js
+      - name: Verify LastWave HTTP, DASH, encrypted hybrid and supporting vocals
+        run: |
+          node --test \
+            scripts/lastwave-desktop-port.test.mjs \
+            scripts/lastwave-hybrid-cenc.test.mjs \
+            scripts/desktop-background-lyrics-port.test.mjs \
+            scripts/http-addon-signing.test.mjs \
+            scripts/enhanced-lrc-background.test.mjs \
+            scripts/lrc-voice-prefix.test.mjs
+      - name: Install frontend dependencies without running native postinstall
+        run: npm ci --ignore-scripts
+      - name: Compile full desktop lyrics renderer
+        run: npx vite build
