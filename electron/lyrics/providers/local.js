@@ -188,7 +188,10 @@ function mergePrivateBackground(own, raw) {
   // rejects a lyric document with no lead, so supply a synthetic lead solely
   // to decode those independent voice events. Never return that anchor.
   const parser = require('../detect').parseAny
-  const parsed = (parser(raw)?.lines || parser('[00:00.000]Lokal backing anchor\n' + raw)?.lines || [])
+  const standalone = parser(raw)?.lines || []
+  const parsed = standalone.some(line => line.bgText)
+    ? standalone
+    : parser('[00:00.000]Lokal backing anchor\n' + raw)?.lines || standalone
   const extras = []
   for (const line of parsed) {
     if (!line?.bgText) continue
