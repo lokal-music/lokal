@@ -190,10 +190,10 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
       await output.close()
     }
     await fsp.rename(tmp, dest)
-    // Honor the user's common cache budget after publication.
-    if (!directory) {
-      try { require('../cache').trim({ keep: [dest] }) } catch {}
-    }
+    // The audio engine may still be playing another cached recording.
+    // No authoritative list of its open files exists in Electron main, so
+    // trim only once the entire selected playback session has ended.
+    if (!directory) require('./stagedMediaTrim').requestTrimAfterPlayback()
     return dest
   } catch (error) {
     await fsp.unlink(tmp).catch(() => {})
