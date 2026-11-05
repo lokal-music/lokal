@@ -4,8 +4,10 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const addons = require('../electron/online/addons.js')
-const { headersForLastWave } = require('../electron/online/lastwaveSigning.js')
-const KEY = '36d96a751b12ee481c281a8a8e64c482d0c1634a22061ab72f40175017818b85'
+const { headersForSignedAddon } = require('../electron/online/httpAddonSigning.js')
+const KEY = 'unit-test-only-key'
+// Test fixture key: release builds default to unsigned requests.
+process.env.HTTP_ADDON_SIGNING_KEY = KEY
 
 function db() {
   const rows = new Map()
@@ -17,26 +19,28 @@ function db() {
 }
 const json = body => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 
-test('LastWave HMAC signs decoded path and token, excluding the query string', () => {
-  const options = { nowMs: 1700000000000, secret: KEY, intent: 'stream' }
-  const actual = headersForLastWave('https://addons.example/a/abc123/search?q=kesariya', options)
+test('Signed add-on HMAC signs decoded path and token, excluding the query string', () => {
+  const options = { nowMs: 1700000000000, signingKey: KEY, intent: 'stream' }
+  const actual = headersForSignedAddon('https://addons.example/a/abc123/search?q=kesariya', options)
   assert.deepEqual(actual, {
     'X-LW-TS': '1700000000',
-    'X-LW-Sign': 'cc90954e083bd632ba915ba56f748f3b44320fc063ee8b69a8880406f1317adb',
+    'X-LW-Sign': '3220ec1fd8252e8b39b7a297d6537be4454e1f29a5d5ed31c976a39ead91e83d',
     'X-LW-Intent': 'stream',
   })
-  assert.equal(headersForLastWave('https://addons.example/a/abc123/search?q=other', options)['X-LW-Sign'], actual['X-LW-Sign'])
-  assert.deepEqual(headersForLastWave('https://addons.example/search?q=other', options), {})
+  assert.equal(headersForSignedAddon('https://addons.example/a/abc123/search?q=other', options)['X-LW-Sign'], actual['X-LW-Sign'])
+  assert.deepEqual(headersForSignedAddon('https://addons.example/search?q=other', options), {})
+  assert.deepEqual(headersForSignedAddon('https://addons.example/a/abc123/search', { signingKey: '' }), {})
+  assert.deepEqual(headersForSignedAddon('http://addons.example/a/abc123/search', options), {})
 })
 
-test('LastWave manifest, search, playback and download requests use the correct headers', async () => {
+test('Signed add-on manifest, search, playback and download requests use the correct headers', async () => {
   const database = db()
   const calls = []
   const fetchImpl = async (url, options) => {
     const parsed = new URL(url)
     calls.push({ path: parsed.pathname, headers: options.headers })
     if (parsed.pathname.endsWith('/manifest.json'))
-      return json({ id: 'lastwave-test', name: 'LastWave test', version: '1', resources: ['search', 'stream'] })
+      return json({ id: 'addon-fixture', name: 'Signed add-on test', version: '1', resources: ['search', 'stream'] })
     if (parsed.pathname.endsWith('/search'))
       return json({ tracks: [{ id: 'recording', title: 'Track', artist: 'Artist' }] })
     return json({ data: { directUrl: 'https://cdn.example/recording.flac', format: 'flac', quality: 'LOSSLESS' } })

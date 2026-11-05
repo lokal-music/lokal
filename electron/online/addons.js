@@ -23,7 +23,7 @@
 
 const crypto = require('crypto')
 const net = require('net')
-const { headersForLastWave } = require('./lastwaveSigning')
+const { headersForSignedAddon } = require('./httpAddonSigning')
 
 const SETTINGS_KEY = 'addons'
 const TIMEOUT_MS = { manifest: 10000, search: 10000, stream: 15000, catalogue: 15000 }
@@ -101,7 +101,7 @@ async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept
     // Sign only on the configured origin. A redirect cannot forward a
     // listener's token proof to another host, even if it repeats /a/<token>.
     const signature = current.origin === originalOrigin
-      ? headersForLastWave(current.toString(), { intent: addonIntent }) : {}
+      ? headersForSignedAddon(current.toString(), { intent: addonIntent }) : {}
     const res = await fetchImpl(current.toString(), { headers: { 'User-Agent': USER_AGENT, ...headers, ...signature }, redirect: 'manual', signal })
     if (!REDIRECT.has(res.status)) return res
     const location = res.headers?.get?.('location')
@@ -471,14 +471,14 @@ function streamFormat(json, url) {
 async function resolveStream(db, key, id, { fetchImpl, force = false, download = false, timeoutMs = TIMEOUT_MS.stream } = {}) {
   const addon = findByKey(db, key)
   if (!addon || addon.enabled === false) throw new Error('This addon is not installed or is turned off.')
-  // Playback and download are distinct LastWave quota intents.
+  // Playback and download are distinct intent-scoped caching.
   const cacheKey = `${key}\n${id}\n${download ? 'download' : 'stream'}`
   const cached = streamCache.get(cacheKey)
   if (!force && cached && cached.expiresAt > Date.now()) return cached
   if (!force && resolving.has(cacheKey)) return resolving.get(cacheKey)
   const job = getJson(endpoint(addon, `/stream/${encodeURIComponent(id)}`), { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream' })
     .then(raw => {
-      // Some LastWave providers duplicate or nest the stream under "data".
+      // Some add-on providers duplicate or nest the stream under "data".
       const json = raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)
         ? { ...raw, ...raw.data } : raw
       for (const layer of [raw, json]) {
