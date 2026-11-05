@@ -103,8 +103,14 @@ function embeddedText(meta) {
   const synced = parts.filter(part => HAS_STAMP.test(part))
   // MP3s may contain both SYLT (timing only) and USLT (LRC plus translated
   // lines). Prefer the synced tag carrying the most adjacent translation text.
-  if (synced.length) return synced.reduce((best, part) =>
-    translationLineScore(part) > translationLineScore(best) ? part : best)
+  if (synced.length) {
+    const bgCount = text => (text.match(/^\s*\[bg\s*:/gim) || []).length
+    // Presence of timed backing vocals is higher-fidelity evidence than
+    // adjacent translation count, which incorrectly scores [bg:] as a subline.
+    return synced.reduce((best, part) => bgCount(part) !== bgCount(best)
+      ? (bgCount(part) > bgCount(best) ? part : best)
+      : (translationLineScore(part) > translationLineScore(best) ? part : best))
+  }
   return parts[0] || null
 }
 
