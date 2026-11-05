@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
 const { fromVorbisCommentBlock, readFlacLyrics, selectWithBacking, attachBackgroundRows } =
   require('../electron/lyrics/flacVorbis.js')
 const { parseEnhancedLRC } = require('../electron/lyrics/lrc.js')
-const { fetch: localLyrics, mergePrivateBackground } = require('../electron/lyrics/providers/local.js')
+const { fetch: localLyrics, mergePrivateBackground, embeddedText } = require('../electron/lyrics/providers/local.js')
 
 const lead = [
   '[00:15.433]<00:15.433>Lead <00:16.353>voice <00:22.852>',
@@ -84,6 +84,25 @@ test('an online lead keeps its precise word timings while FLAC adds backing voca
   // Retrying the same FLAC merge should not duplicate a singer.
   const again=mergePrivateBackground(enriched,bg)
   assert.equal(again.lines[0].bgText,'Backing voice')
+})
+
+test('review: embedded lyrics retain translations instead of selecting longer alternate lead', () => {
+  const translated = '[00:01.000]First line\nPremière ligne\n[00:03.000]Second line\nDeuxième ligne'
+  const longerWithoutTranslations = '[00:01.000]First line with extra words but no translation whatsoever\n[00:03.000]Second line with extra words'
+  const result = embeddedText({ native: { id3v24: [
+    { id: 'USLT', value: translated },
+    { id: 'USLT', value: longerWithoutTranslations },
+  ] } })
+  assert.ok(result.includes('Première ligne'), 'translation-aware lead must survive merging')
+  assert.ok(result.includes('Deuxième ligne'))
+})
+
+test('review: untimed lyric rows do not receive all backing events under row zero', () => {
+  const plain = { source: 'online', lines: [
+    { time: null, text: 'A plain line' },
+    { time: null, text: 'Another plain line' },
+  ] }
+  assert.equal(mergePrivateBackground(plain, bg), plain)
 })
 
 test('backing singer survives subsequent lead focus and stops at own word end', () => {
