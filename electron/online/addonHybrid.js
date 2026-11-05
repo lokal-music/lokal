@@ -5,7 +5,7 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { cacheDir } = require('../cache')
+const os = require('node:os')
 const { guardMediaUrl } = require('./addonDash')
 const { openInit, openFragment } = require('./addonHybridCenc')
 
@@ -82,7 +82,7 @@ async function fetchByteRange(url, range, fetchImpl, signal) {
 
 async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='' }={}) {
   const plan=parseHybrid(raw,addonBase)
-  const dir=cacheDir('playback')
+  const dir = require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache')
   await fs.mkdir(dir,{recursive:true})
   const digest=crypto.createHash('sha256')
     .update(key+'\n'+plan.url+'\n'+JSON.stringify(plan.ranges)+'\n'+plan.key)
