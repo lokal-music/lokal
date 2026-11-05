@@ -184,7 +184,11 @@ function isAudioFile(filePath) {
  */
 function mergePrivateBackground(own, raw) {
   if (!raw || !Array.isArray(own?.lines)) return own
-  const parsed = require('../detect').parseAny(raw)?.lines || []
+  // A Vorbis field may contain *only* [bg:] events. The ordinary parser
+  // rejects a lyric document with no lead, so supply a synthetic lead solely
+  // to decode those independent voice events. Never return that anchor.
+  const parser = require('../detect').parseAny
+  const parsed = (parser(raw)?.lines || parser('[00:00.000]Lokal backing anchor\n' + raw)?.lines || [])
   const extras = []
   for (const line of parsed) {
     if (!line?.bgText) continue
