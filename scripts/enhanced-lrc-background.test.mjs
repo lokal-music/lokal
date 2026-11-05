@@ -39,3 +39,42 @@ test('background timestamps respect LRC offset and are not a translation', () =>
   assert.equal(parsed[0].bgWords[0].end, 2)
   assert.equal(parsed[0].translation, undefined)
 })
+
+
+test('background rows grouped after all leads still follow their audio timestamps', () => {
+  const leads = Array.from({ length: 41 }, (_, i) => {
+    const t = String(i * 5).padStart(2, '0')
+    const m = String(Math.floor(i * 5 / 60)).padStart(2, '0')
+    const sec = String(i * 5 % 60).padStart(2, '0')
+    return `[${m}:${sec}.000]v1:<${m}:${sec}.000>Lead ${i + 1}<${m}:${sec}.900>`
+  })
+  const bg = Array.from({ length: 16 }, (_, i) => {
+    const seconds = 75 + i * 5 + 1
+    const m = String(Math.floor(seconds / 60)).padStart(2, '0')
+    const s = String(seconds % 60).padStart(2, '0')
+    return `[bg:<${m}:${s}.100><${m}:${s}.100>Voice ${i + 1}<${m}:${s}.900>]`
+  })
+  const lines = parseEnhancedLRC([...leads, '', ...bg].join('\n'))
+  assert.equal(lines.length, 41)
+  assert.equal(lines.filter(x => x.bgText).length, 16)
+  assert.equal(lines[15].bgText, 'Voice 1')
+  assert.equal(lines[16].bgText, 'Voice 2')
+  assert.equal(lines[15].bgWords[0].time, 76.1)
+  assert.equal(lines[0].bgText, undefined)
+  assert.equal(lines[40].bgText, undefined)
+})
+
+test('out-of-order or separated backing rows associate by onset, not surrounding text', () => {
+  const raw = [
+    '[bg:<00:07.00><00:07.00>Early<00:08.00>]',
+    '',
+    '[00:05.00]<00:05.00>First<00:09.00>',
+    '[00:10.00]<00:10.00>Second<00:13.00>',
+    '',
+    '[bg:<00:11.00><00:11.00>Late<00:12.00>]',
+  ].join('\n')
+  const lines = parseEnhancedLRC(raw)
+  assert.equal(lines.length, 2)
+  assert.equal(lines[0].bgText, 'Early')
+  assert.equal(lines[1].bgText, 'Late')
+})
