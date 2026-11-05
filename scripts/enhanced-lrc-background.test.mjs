@@ -11,7 +11,7 @@ test('standalone timed backing vocals remain attached to the overlapping lead', 
     '[00:15.433]v1:<00:15.433>Lead <00:16.353>voice <00:22.852>',
     '[bg:<00:17.254><00:17.254>Backing <00:17.726><00:17.726>voice <00:21.736><00:21.736>]',
     '[00:23.055]v1:<00:23.055>Next <00:24.039>line <00:24.474>',
-  ].join('\\n')
+  ].join('\n')
   const parsed = parseEnhancedLRC(raw)
   assert.equal(parsed.length, 2)
   assert.deepEqual(parsed.map(line => line.text), ['Lead voice', 'Next line'])
@@ -29,8 +29,8 @@ test('standalone timed backing vocals remain attached to the overlapping lead', 
 })
 
 test('background timestamps respect LRC offset and are not a translation', () => {
-  const raw = '[offset:500]\\n[00:01.00]<00:01.00>Lead<00:03.00>\\n' +
-    '[bg:<00:01.50><00:01.50>Harmony<00:02.50><00:02.50>]\\n' +
+  const raw = '[offset:500]\n[00:01.00]<00:01.00>Lead<00:03.00>\n' +
+    '[bg:<00:01.50><00:01.50>Harmony<00:02.50><00:02.50>]\n' +
     '[00:03.20]<00:03.20>Next<00:04.20>'
   const parsed = parseEnhancedLRC(raw)
   assert.equal(parsed.length, 2)

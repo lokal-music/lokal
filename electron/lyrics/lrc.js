@@ -154,7 +154,7 @@ function parseEnhancedLRC(text) {
         if (first) {
           const synthetic = `[${first[1]}:${first[2]}.${first[3] || '00'}]${backing[1]}`
           const parsed = parseEnhancedLRC(
-            `${offset ? `[offset:${Math.round(offset * 1000)}]\\n` : ''}${synthetic}`
+            `${offset ? `[offset:${Math.round(offset * 1000)}]\n` : ''}${synthetic}`
           )[0]
           if (parsed?.text) {
             const lead = previous[0]
