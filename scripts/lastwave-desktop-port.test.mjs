@@ -73,6 +73,21 @@ test('actual static DASH stream is staged as a seekable local file', async () =>
   } finally { await rm(dir,{recursive:true,force:true}) }
 })
 
+test('DASH refuses oversized network responses before allocating segment bodies', async () => {
+  const dir=await mkdtemp(join(tmpdir(),'lokal-lastwave-bounds-'))
+  try {
+    await assert.rejects(
+      stageAddonDash({xml:sampleMpd,base},base,{
+        directory:dir,key:'oversized',
+        fetchImpl:async()=>new Response(Buffer.from('small'),{
+          status:200,headers:{'content-length':String(32*1024*1024)},
+        }),
+      }),
+      /limits/,
+    )
+  } finally { await rm(dir,{recursive:true,force:true}) }
+})
+
 test('DASH refuses dynamic manifests, DRM, private hosts and segment explosions', () => {
   assert.throws(()=>parseStaticMpd(sampleMpd.replace('type="static"','type="dynamic"'),base,base),/static/)
   assert.throws(()=>parseStaticMpd(sampleMpd.replace('<Period>','<ContentProtection/><Period>'),base,base),/protected/)
