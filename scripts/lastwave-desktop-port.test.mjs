@@ -77,7 +77,7 @@ test('DASH refuses dynamic manifests, DRM, private hosts and segment explosions'
   assert.throws(()=>parseStaticMpd(sampleMpd.replace('type="static"','type="dynamic"'),base,base),/static/)
   assert.throws(()=>parseStaticMpd(sampleMpd.replace('<Period>','<ContentProtection/><Period>'),base,base),/protected/)
   assert.throws(()=>parseStaticMpd(sampleMpd.replace('https://cdn.example/init.m4a','http://127.0.0.1/init.m4a'),base,base),/HTTPS/)
-  assert.throws(()=>parseStaticMpd(sampleMpd.replace('r="1"','r="8000"'),base,base),/timeline/)
+  assert.throws(()=>parseStaticMpd(sampleMpd.replace('<S d="48000" r="1"','<S d="48000" r="8000"'),base,base),/timeline/)
 })
 
 test('hybrid validates byte ranges and forbids invalid key material', () => {
