@@ -7,8 +7,6 @@ const fs = require('node:fs')
 const fsp = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { Readable } = require('node:stream')
-const { pipeline } = require('node:stream/promises')
 const os = require('node:os')
 
 const MAX_MPD_BYTES = 1024 * 1024
@@ -16,6 +14,23 @@ const MAX_SEGMENTS = 512
 const MAX_AUDIO_BYTES = 512 * 1024 * 1024
 const SEGMENT_BYTES = 16 * 1024 * 1024
 const TIMEOUT_MS = 30000
+
+async function boundedResponse(response, maxBytes, errorMessage) {
+  if (!response.body) throw new Error(errorMessage)
+  const advertised = Number(response.headers?.get?.('content-length'))
+  if (Number.isFinite(advertised) && advertised > maxBytes) {
+    throw new Error(errorMessage)
+  }
+  const chunks = []
+  let length = 0
+  for await (const part of response.body) {
+    const chunk = Buffer.from(part)
+    length += chunk.length
+    if (length > maxBytes) throw new Error(errorMessage)
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks, length)
+}
 
 function guardMediaUrl(value, addonBase) {
   let uri, addon
@@ -146,9 +161,7 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
       signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
     })
     if (!response.ok) throw new Error('The DASH manifest could not be fetched.')
-    const data = Buffer.from(await response.arrayBuffer())
-    if (data.length > MAX_MPD_BYTES) throw new Error('DASH manifest is too large.')
-    xml = data.toString('utf8')
+    xml = (await boundedResponse(response, MAX_MPD_BYTES, 'DASH manifest is too large.')).toString('utf8')
   }
   const plan = parseStaticMpd(xml, manifest.base, addonBase)
   const dir = directory || (require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache'))
@@ -166,9 +179,8 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
           signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
         })
         if (!response.ok || !response.body) throw new Error('The DASH audio segment could not be fetched.')
-        const part = Buffer.from(await response.arrayBuffer())
-        if (!part.length || part.length > SEGMENT_BYTES ||
-            (length += part.length) > MAX_AUDIO_BYTES) throw new Error('DASH audio exceeds playback limits.')
+        const part = await boundedResponse(response, Math.min(SEGMENT_BYTES, MAX_AUDIO_BYTES - length), 'DASH audio exceeds playback limits.')
+        if (!part.length || (length += part.length) > MAX_AUDIO_BYTES) throw new Error('DASH audio exceeds playback limits.')
         if (!output.write(part)) await new Promise(resolve => output.once('drain', resolve))
       }
       await new Promise((resolve, reject) => output.end(err => err ? reject(err) : resolve()))
