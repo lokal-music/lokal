@@ -471,7 +471,7 @@ function streamFormat(json, url) {
 async function resolveStream(db, key, id, { fetchImpl, force = false, download = false, timeoutMs = TIMEOUT_MS.stream } = {}) {
   const addon = findByKey(db, key)
   if (!addon || addon.enabled === false) throw new Error('This addon is not installed or is turned off.')
-  // Playback and download are distinct intent-scoped caching.
+  // Playback and download use separate intent-scoped caches.
   const cacheKey = `${key}\n${id}\n${download ? 'download' : 'stream'}`
   const cached = streamCache.get(cacheKey)
   if (!force && cached && cached.expiresAt > Date.now()) return cached
