@@ -55,7 +55,7 @@ test('lastwave AES-CTR CENC test fixture decrypts the real MP4 sample bytes',()=
   openFragment(item.fragment,item.key,config,0)
   assert.ok(item.fragment.includes(item.clear))
   assert.equal(item.fragment.includes(Buffer.from('senc')),false)
-  assert.throws(()=>openFragment(Buffer.alloc(4),item.key,config,0),/invalid|fragments|boundaries/)
+  assert.throws(()=>openFragment(Buffer.alloc(4),item.key,config,0),/invalid|fragments|boundaries|partial MP4 box/)
 })
 
 test('encrypted lastwave hybrid-v1 decrypts and stages a complete seekable file',async()=>{
