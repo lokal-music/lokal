@@ -312,7 +312,7 @@ async function getLyrics(db, args) {
           // An explicit source choice is the user's decision, even when plain.
           const pinned = fromRow(row, meta, db)
           const enriched = !meta.vorbisBgChecked ? await withVorbisBacking(pinned, filePath) : pinned
-          if ((enriched !== pinned || trackId && row.track_id !== trackId)) writeRow(db, trackId || row.track_id, filePath || row.file_path, enriched, { attempts: meta.attempts, pinned: true })
+          if ((enriched !== pinned || !meta.vorbisBgChecked && /\.flac$/i.test(filePath || '') || trackId && row.track_id !== trackId)) writeRow(db, trackId || row.track_id, filePath || row.file_path, enriched, { attempts: meta.attempts, pinned: true })
           return enriched
         } else if (row.source === 'local' &&
           (!meta.bgLrcChecked || (!meta.vorbisBgChecked && /\.flac$/i.test(filePath || ''))) &&
@@ -338,7 +338,7 @@ async function getLyrics(db, args) {
         } else {
           const cached = fromRow(row, meta, db)
           const enriched = !meta.vorbisBgChecked ? await withVorbisBacking(cached, filePath) : cached
-          if (enriched !== cached || trackId && row.track_id !== trackId) {
+          if (enriched !== cached || !meta.vorbisBgChecked && /\.flac$/i.test(filePath || '') || trackId && row.track_id !== trackId) {
             writeRow(db, trackId || row.track_id, filePath || row.file_path, enriched, { attempts: meta.attempts, pinned: meta.pinned })
           }
           return enriched
