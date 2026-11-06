@@ -1,6 +1,6 @@
 {
   "name": "lokal-music",
-  "version": "14.1.2",
+  "version": "14.1.3",
   "description": "Local-first music player built w/ Electron and React. Designed for people with large local music libraries who'd like a modern listening experience w/o the burdens of streaming subscriptions.",
   "author": "sipbuu <97703296+sipbuu@users.noreply.github.com>",
   "main": "electron/main.js",
