@@ -90,16 +90,15 @@ test('DASH signed URLs XML-decode query separators before CDN fetch (403 regress
 })
 
 test('DASH BaseURL also unescapes signed CDN query parameters', () => {
-  const xml = '<MPD type="static"><BaseURL>https://cdn.example/media/?token=abc&amp;expires=42</BaseURL>' +
+  const xml = '<MPD type="static"><BaseURL>https://cdn.example/media&amp;signed&#47;</BaseURL>' +
     '<Period><AdaptationSet mimeType="audio/mp4"><Representation id="audio" bandwidth="800000">' +
     '<SegmentTemplate initialization="init.m4a" media="fragment-$Number$.m4s">' +
     '<SegmentTimeline><S d="48000"/></SegmentTimeline></SegmentTemplate>' +
     '</Representation></AdaptationSet></Period></MPD>'
   const plan = parseStaticMpd(xml, base, base)
-  assert.equal(plan.initUrl, 'https://cdn.example/media/init.m4a')
-  assert.equal(plan.segments[0], 'https://cdn.example/media/fragment-1.m4s')
-  // Relative paths resolved against BaseURL do not inherit its query string.
-  // An escaped query must nevertheless be decoded before URL resolution.
+  assert.equal(plan.initUrl, 'https://cdn.example/media&signed/init.m4a')
+  assert.equal(plan.segments[0], 'https://cdn.example/media&signed/fragment-1.m4s')
+  // Entity expansion applies to BaseURL text as well as attributes.
 })
 
 test('review: public fc/fd hosts are allowed without admitting private IPv6 hosts', () => {
