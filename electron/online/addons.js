@@ -393,7 +393,7 @@ async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEO
           !t.preview && !t.isPreview && !t.previewOnly && !t.isSample &&
           t.encrypted !== true && !t.drm && !Object.keys(t.headers || {}).length) {
         try {
-          const direct = checkUrl(t.streamURL)
+          const direct = new URL(require('./addonDash').guardMediaUrl(t.streamURL, addon.baseUrl))
           if (/\.(?:flac|mp3|m4a|mp4|ogg|opus|wav|aac|webm)$/i.test(direct.pathname)) {
             if (inlineStreamCache.size >= 200) inlineStreamCache.delete(inlineStreamCache.keys().next().value)
             inlineStreamCache.set(`${key}\n${track.id}`, { at: Date.now(), value: { ...t, url: direct.toString() } })
@@ -521,7 +521,7 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     const inline = inlineStreamCache.get(`${key}\n${id}`)
     // An explicit quality setting must be resolved by the add-on, not by an
     // inline URL that may point to a different tier.
-    const qualitySelected = Object.keys(effectiveSettings(addon)).some(name => /quality|format|codec|bitrate/i.test(name))
+    const qualitySelected = Object.keys(addon.settings || {}).some(name => /quality|format|codec|bitrate/i.test(name))
     const useInline = !force && !download && !qualitySelected && inline &&
       Date.now() - inline.at < SEARCH_TTL_MS
     if (useInline) raw = inline.value
