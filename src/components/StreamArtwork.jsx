@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { usePlayerStore } from '../store/player'
 import { api } from '../api'
-import { isStreamed, isAddonProvider, streamRef } from '../onlineTracks'
+import { isStreamed, isAddonProvider, streamRef, loadAddonNames } from '../onlineTracks'
 import DiscoveryImage from './DiscoveryImage'
-import { resolvePlayerArtwork } from '../playerArtworkResolution.mjs'
+import { isAmazonMusicAddonLabel, resolvePlayerArtwork } from '../playerArtworkResolution.mjs'
 
 // Search covers may already have been saved to queue/history before their
 // source stopped serving the URL. Repair the active track and queued copy once
@@ -45,17 +45,34 @@ export default function StreamArtwork({ track, src, fallback, ...props }) {
   useEffect(() => {
     let active = true
     setSelected({ key: '', url: '' })
-    if (!isAddonProvider(streamRef(track)?.provider)) return () => { active = false }
-    // Search is allowed to show a cheap thumbnail immediately. Resolve a
-    // verified large image separately, as mobile does; do not block playback.
-    void resolvePlayerArtwork(track, src, async request => {
-      const [result] = await api.discoveryArtwork([request])
-      return result?.image || ''
-    }).then(url => {
+    const ref = streamRef(track)
+    if (!isAddonProvider(ref?.provider)) return () => { active = false }
+    // For Amazon, always try a separate Deezer/iTunes/YouTube catalogue cover
+    // FIRST. Source-owned thumbnails are used only if that lookup fails.
+    // Other HTTP addons keep the normal size-based fallback policy.
+    void (async () => {
+      const names = await loadAddonNames()
+      if (!active) return
+      const preferIndependent = isAmazonMusicAddonLabel(names?.[ref.provider])
+      const url = await resolvePlayerArtwork(track, src, async request => {
+        const [result] = await api.discoveryArtwork([request])
+        if (result?.image) return result.image
+        // A recording can have different featured-artist/title credits in
+        // Amazon and the public catalogues. An exact album match is a safer
+        // second independent source than an arbitrary song thumbnail.
+        if (preferIndependent && track.album) {
+          const [album] = await api.discoveryArtwork([{
+            ...request, type: 'album', title: track.album,
+            artist: track.album_artist || track.artist,
+          }])
+          return album?.image || ''
+        }
+        return ''
+      }, { preferIndependent })
       if (!active || !url || url === src) return
       setSelected({ key, url })
       promoteStreamArtwork(track, url)
-    }).catch(() => {})
+    })().catch(() => {})
     return () => { active = false }
   }, [key, track?.title, track?.artist])
 

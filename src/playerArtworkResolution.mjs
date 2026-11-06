@@ -7,6 +7,11 @@ export const PLAYER_ARTWORK_TARGET = 1000
 const MAX_LOOKUP_MS = 15000
 const PROBE_TIMEOUT_MS = 6000
 const cache = new Map()
+const independentAmazonArt = new Map()
+
+export function isAmazonMusicAddonLabel(label) {
+  return /^amazon(?:\b|[-_])/i.test(String(label || '').trim())
+}
 const playableImage = url => typeof url === 'string' && /^(?:https:\/\/|file:\/\/)/i.test(url)
 
 export function probeArtworkPixels(url, timeoutMs = PROBE_TIMEOUT_MS) {
@@ -34,7 +39,7 @@ export function probeArtworkPixels(url, timeoutMs = PROBE_TIMEOUT_MS) {
  * Return the largest *decoded* image. Smaller fallbacks remain available while
  * full-resolution artwork is being fetched, and the audio never waits for it.
  */
-export async function choosePlayerArtwork(src, { title, artist, resolveRemote, inspect = probeArtworkPixels, now = Date.now } = {}) {
+export async function choosePlayerArtwork(src, { title, artist, resolveRemote, inspect = probeArtworkPixels, now = Date.now, preferIndependent = false, onIndependentResolved } = {}) {
   const deadline = now() + MAX_LOOKUP_MS
   let best = null
   const tried = new Set()
@@ -57,26 +62,57 @@ export async function choosePlayerArtwork(src, { title, artist, resolveRemote, i
       if (side >= PLAYER_ARTWORK_TARGET) break
     }
   }
-  await inspectCandidates(src)
-  if ((!best || best.side < PLAYER_ARTWORK_TARGET) && title && artist && resolveRemote && now() < deadline) {
-    // A search thumbnail may already be stored in the local ghost row. Do not
-    // let that low-resolution row short-circuit the independent catalogue lookup.
+  const lookupIndependent = async () => {
+    if (!title || !artist || !resolveRemote || now() >= deadline) return false
+    // Amazon's addon artwork is a search thumbnail, not the full-player
+    // source. Always consult the independent catalogue even if the Amazon
+    // URL happens to load at a large requested size.
     try {
       const remote = await resolveRemote({ type: 'track', title, artist, exclude: src || '', remoteOnly: true })
-      if (remote && remote !== src && now() < deadline) await inspectCandidates(remote)
-    } catch { /* Keep the best valid rendition of the existing cover. */ }
+      if (!remote || remote === src || now() >= deadline) return false
+      const previous = best
+      best = null
+      await inspectCandidates(remote)
+      const independent = best
+      // Reject a tiny metadata placeholder. The addon remains a fallback if
+      // the independent catalogue cannot produce a usable image.
+      if (independent && (!preferIndependent || independent.side >= 300)) {
+        if (preferIndependent) onIndependentResolved?.(independent.url)
+        if (!preferIndependent && previous &&
+            (previous.side > independent.side || (previous.side === independent.side && previous.area >= independent.area))) {
+          best = previous
+        }
+        return true
+      }
+      best = previous
+    } catch { /* Keep the best valid cover of the existing source. */ }
+    return false
   }
+
+  if (preferIndependent && await lookupIndependent()) return best?.url || null
+  await inspectCandidates(src)
+  if (!preferIndependent && (!best || best.side < PLAYER_ARTWORK_TARGET)) await lookupIndependent()
   return best?.url || null
 }
 
-export function resolvePlayerArtwork(track, src, resolveRemote) {
+export function resolvePlayerArtwork(track, src, resolveRemote, { preferIndependent = false } = {}) {
   if (!track?.id || !track?.title || !track?.artist) return Promise.resolve(null)
-  const key = JSON.stringify([track.id, track.file_path, track.title, track.artist, src])
+  const identity = JSON.stringify([track.id, track.file_path])
+  // Once an independent cover is applied to the Now Playing record, do not
+  // exclude it and initiate a second lookup against another catalogue.
+  if (preferIndependent && independentAmazonArt.get(identity) === src) return Promise.resolve(src)
+  const key = JSON.stringify([track.id, track.file_path, track.title, track.artist, src, preferIndependent])
   const existing = cache.get(key)
   if (existing && Date.now() - existing.at < (existing.hit ? 3600000 : 120000)) return existing.promise
   const entry = {
     at: Date.now(), hit: false,
-    promise: choosePlayerArtwork(src, { title: track.title, artist: track.artist, resolveRemote })
+    promise: choosePlayerArtwork(src, {
+      title: track.title, artist: track.artist, resolveRemote, preferIndependent,
+      onIndependentResolved: url => {
+        independentAmazonArt.set(identity, url)
+        if (independentAmazonArt.size > 200) independentAmazonArt.delete(independentAmazonArt.keys().next().value)
+      },
+    })
       .then(url => { entry.hit = !!url; return url })
       .catch(() => null),
   }
