@@ -55,6 +55,53 @@ test('inline/remote DASH detection ignores bare default labels', () => {
   assert.deepEqual(parsed.segments,['https://cdn.example/frag-1.m4s','https://cdn.example/frag-2.m4s'])
 })
 
+test('DASH signed URLs XML-decode query separators before CDN fetch (403 regression)', async () => {
+  // Mobile uses an XML parser, whereas desktop previously sent literal
+  // "amp;expires" / "#38;expires" query parameters to the CDN.
+  const signed = sampleMpd
+    .replace('/init.m4a"', '/init.m4a?sig=alpha%26beta&amp;expires=42"')
+    .replace('/frag-$Number$.m4s"', '/frag-$Number$.m4s?sig=alpha%26beta&#38;expires=42"')
+  const plan = parseStaticMpd(signed, base, base)
+  assert.equal(plan.initUrl, 'https://cdn.example/init.m4a?sig=alpha%26beta&expires=42')
+  assert.deepEqual(plan.segments, [
+    'https://cdn.example/frag-1.m4s?sig=alpha%26beta&expires=42',
+    'https://cdn.example/frag-2.m4s?sig=alpha%26beta&expires=42',
+  ])
+  const dir = await mkdtemp(join(tmpdir(), 'lokal-lastwave-escaped-'))
+  const requests = [], diagnostic = []
+  try {
+    const file = await stageAddonDash({xml: signed, base}, base, {
+      directory: dir, key: 'xml-escaped-cdn-query',
+      onDiagnostic: entry => diagnostic.push(entry),
+      fetchImpl: async (url, options) => {
+        requests.push(url)
+        assert.equal(options.headers['Accept-Encoding'], 'identity')
+        if (!new URL(url).searchParams.has('expires')) return new Response('Forbidden', {status: 403})
+        const part = url.includes('init.m4a') ? 'INIT' : url.includes('frag-1.m4s') ? 'ONE' : 'TWO'
+        return new Response(Buffer.from(part), {status: 200})
+      },
+    })
+    assert.equal((await readFile(file)).toString(), 'INITONETWO')
+    assert.equal(requests.length, 3)
+    assert.equal(diagnostic.find(e => e.event === 'dash-plan')?.encodedQuerySeparators, true)
+    assert.equal(diagnostic.find(e => e.event === 'dash-plan')?.initHasQuery, true)
+    assert.ok(!JSON.stringify(diagnostic).includes('alpha%26beta'), 'signed URL never logged')
+  } finally { await rm(dir, {recursive: true, force: true}) }
+})
+
+test('DASH BaseURL also unescapes signed CDN query parameters', () => {
+  const xml = '<MPD type="static"><BaseURL>https://cdn.example/media/?token=abc&amp;expires=42</BaseURL>' +
+    '<Period><AdaptationSet mimeType="audio/mp4"><Representation id="audio" bandwidth="800000">' +
+    '<SegmentTemplate initialization="init.m4a" media="fragment-$Number$.m4s">' +
+    '<SegmentTimeline><S d="48000"/></SegmentTimeline></SegmentTemplate>' +
+    '</Representation></AdaptationSet></Period></MPD>'
+  const plan = parseStaticMpd(xml, base, base)
+  assert.equal(plan.initUrl, 'https://cdn.example/media/init.m4a')
+  assert.equal(plan.segments[0], 'https://cdn.example/media/fragment-1.m4s')
+  // Relative paths resolved against BaseURL do not inherit its query string.
+  // An escaped query must nevertheless be decoded before URL resolution.
+})
+
 test('review: public fc/fd hosts are allowed without admitting private IPv6 hosts', () => {
   for (const hostname of ['fcdn.net', 'fdcdn.example.com']) {
     const url='https://'+hostname+'/audio.m4a'
