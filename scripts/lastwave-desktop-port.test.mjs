@@ -47,6 +47,7 @@ test('LastWave nested stream accepts progressive FLAC even with default DASH lab
 test('inline/remote DASH detection ignores bare default labels', () => {
   assert.equal(extractManifest({format:'dash',manifest:'dash',url:direct},base),null)
   assert.equal(extractManifest({manifestXml:sampleMpd,format:'dash'},base).xml,sampleMpd)
+  assert.equal(extractManifest({streamURL:'https://cdn.example/manifest.mpd?sig=1'},base).url,'https://cdn.example/manifest.mpd?sig=1')
   assert.equal(extractManifest({dataUrl:'data:application/dash+xml;base64,'+Buffer.from(sampleMpd).toString('base64')},base).xml,sampleMpd)
   assert.ok(extractManifest({url:'https://cdn.example/manifest.mpd?sig=ok'},base).url)
   const parsed=parseStaticMpd(sampleMpd,base,base)
