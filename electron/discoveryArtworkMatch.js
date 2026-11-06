@@ -2,11 +2,11 @@
 // discovery/recommendation_match.dart. These keys are used only for cover
 // metadata, never for selecting a different recording or media stream.
 const key = value => String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
-const featuredBracket = /\s*[([](?:feat\.?|ft\.?|featuring|with)\s+[^)\]]+[)\]]/gi
+const featuredBracket = /\s*(?:\(|\[)(?:feat\.?|ft\.?|featuring|with)\s+[^)\]]+(?:\)|\])/gi
 const featuredSuffix = /\s+(?:feat\.?|ft\.?|featuring)\s+.+$/i
-const harmlessBrackets = /\s*[([](?:explicit|clean)(?:\s+version)?|official (?:music video|audio|video)|lyrics?|audio|hq|hd|album version|single version)[)\]]/gi
+const harmlessBrackets = /\s*(?:\(|\[)(?:explicit|clean)(?:\s+version)?(?:\)|\])|\s*(?:\(|\[)(?:official (?:music video|audio|video)|lyrics?|audio|hq|hd|album version|single version)(?:\)|\])/gi
 const sameRecording = '(?:(?:\\d{4}\\s+)?(?:digital(?:ly)?\\s+)?remaster(?:ed)?(?:\\s+\\d{4})?(?:\\s+version)?|(?:album|single|mono|stereo|lp)\\s+version|original\\s+mix|mono|stereo)'
-const remasterBracket = new RegExp('\\s*[(\\[]' + sameRecording + '[)\\]]', 'gi')
+const remasterBracket = new RegExp('\\s*(?:\\(|\\[)' + sameRecording + '(?:\\)|\\])', 'gi')
 const remasterSuffix = new RegExp('\\s+[-–—]\\s+' + sameRecording + '\\s*$', 'gi')
 const recordingVersions = /\b(?:remix|live|cover|instrumental|acoustic|karaoke|edit|sped up|slowed|nightcore)\b/
 const stopWords = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'in', 'of', 'on', 'the', 'to', 'with'])
