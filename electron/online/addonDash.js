@@ -88,9 +88,24 @@ function extractManifest(response, addonBase) {
   return null
 }
 
+function decodeXmlEntities(value) {
+  // Unlike a string match, mobile's XML parser unescapes signed URLs before
+  // fetching them. Without this, "&amp;expires=..." becomes a literal "amp;"
+  // query parameter and the CDN rejects otherwise valid segment URLs with 403.
+  // Decode once only: a URL-encoded %26 and a literal ampersand must survive.
+  return String(value).replace(/&(?:amp|lt|gt|quot|apos|#(?:x[0-9a-fA-F]+|[0-9]+));/g, entity => {
+    const named = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" }
+    if (Object.hasOwn(named, entity)) return named[entity]
+    const raw = entity.slice(2, -1)
+    const code = /^x/i.test(raw) ? Number.parseInt(raw.slice(1), 16) : Number(raw)
+    return Number.isInteger(code) && code > 0 && code <= 0x10ffff &&
+      (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : entity
+  })
+}
+
 function attrs(tag) {
   const result = {}
-  for (const match of String(tag).matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(['"])(.*?)\2/g)) result[match[1]] = match[3]
+  for (const match of String(tag).matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*(['"])(.*?)\2/g)) result[match[1]] = decodeXmlEntities(match[3])
   return result
 }
 const tag = (xml, name) => [...String(xml).matchAll(new RegExp('<(?:\\w+:)?' + name + '\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?' + name + '\\s*>', 'g'))]
@@ -123,7 +138,7 @@ function parseStaticMpd(xml, manifestBase, addonBase) {
   let base = manifestBase
   for (const section of [xml, periods[0][1], audio[0][1], rep[1]]) {
     const baseTag = tag(section, 'BaseURL')[0]
-    if (baseTag?.[1]) base = guardMediaUrl(new URL(baseTag[1].trim(), base).toString(), addonBase)
+    if (baseTag?.[1]) base = guardMediaUrl(new URL(decodeXmlEntities(baseTag[1].trim()), base).toString(), addonBase)
   }
   const repId = attrs(rep[0]).id || ''
   function expand(template, number) {
@@ -165,13 +180,19 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
   if (!xml) {
     const response = await fetchImpl(guardMediaUrl(manifest.url, addonBase), {
       signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
+      headers: { 'Accept-Encoding': 'identity' },
     })
     report(onDiagnostic, 'dash-manifest-response', { status: response.status })
     if (!response.ok) throw new Error('The DASH manifest could not be fetched.')
     xml = (await boundedResponse(response, MAX_MPD_BYTES, 'DASH manifest is too large.')).toString('utf8')
   }
   const plan = parseStaticMpd(xml, manifest.base, addonBase)
-  report(onDiagnostic, 'dash-plan', { segments: plan.segments.length, manifestBytes: Buffer.byteLength(xml) })
+  report(onDiagnostic, 'dash-plan', {
+    segments: plan.segments.length, manifestBytes: Buffer.byteLength(xml),
+    // Only booleans. Do not log the MPD, signed CDN URL, signature, or token.
+    encodedQuerySeparators: /&(?:amp|#0*38|#x0*26);/i.test(xml),
+    initHasQuery: !!new URL(plan.initUrl).search,
+  })
   const dir = directory || (require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache'))
   await fsp.mkdir(dir, { recursive: true })
   const digest = crypto.createHash('sha256').update(key + '\n' + xml).digest('hex').slice(0, 24)
@@ -192,6 +213,7 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
         if (signal?.aborted) throw signal.reason || new Error('DASH playback was cancelled.')
         const response = await fetchImpl(address, {
           signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
+          headers: { 'Accept-Encoding': 'identity' },
         })
         if (!response.ok || !response.body) {
           report(onDiagnostic, 'dash-segment-response', { index, status: response.status, ok: false })
