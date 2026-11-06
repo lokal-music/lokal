@@ -9,6 +9,9 @@ on:
       - 'src/pages/Albums.jsx'
       - 'src/components/DiscoveryImage.jsx'
       - 'src/components/StreamArtwork.jsx'
+      - 'src/playerArtworkResolution.mjs'
+      - 'electron/discoveryArtwork.js'
+      - 'scripts/lastwave-full-resolution-artwork.test.mjs'
       - 'src/components/OnlineResults.jsx'
       - 'src/components/PlayerBar.jsx'
       - 'src/components/MiniPlayer.jsx'
@@ -69,6 +72,7 @@ jobs:
           node --test \
             scripts/lastwave-desktop-port.test.mjs \
             scripts/lastwave-diagnostics.test.mjs \
+            scripts/lastwave-full-resolution-artwork.test.mjs \
             scripts/catalogue-quality.test.mjs \
             scripts/album-full-artwork.test.mjs \
             scripts/lastwave-hybrid-cenc.test.mjs \
