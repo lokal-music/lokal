@@ -1,5 +1,6 @@
 import React from 'react'
 import { usePlayerStore } from '../store/player'
+import { api } from '../api'
 import { isStreamed } from '../onlineTracks'
 import DiscoveryImage from './DiscoveryImage'
 
@@ -37,9 +38,7 @@ export default function StreamArtwork({ track, src, fallback, ...props }) {
       // Only public HTTPS URLs can be persisted in the ghost-track database.
       // A local file:// cover can still render in this session.
       if (/^https:\/\//i.test(image) && track?.id) {
-        void import('../api').then(({ api }) =>
-          api.repairOnlineArtwork?.(track.id, track.artwork_url || null, image)
-        ).catch(() => {})
+        void api.repairOnlineArtwork?.(track.id, track.artwork_url || null, image).catch(() => {})
       }
     }}
   />
