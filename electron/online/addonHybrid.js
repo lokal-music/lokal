@@ -9,6 +9,10 @@ const os = require('node:os')
 const { guardMediaUrl } = require('./addonDash')
 const { openInit, openFragment } = require('./addonHybridCenc')
 
+function report(onDiagnostic, event, details = {}) {
+  try { onDiagnostic?.({ event, ...details }) } catch { /* Logging must not break audio. */ }
+}
+
 const MAX_CHUNK = 16 * 1024 * 1024
 const MAX_TOTAL = 512 * 1024 * 1024
 const MAX_RANGES = 4096
@@ -80,28 +84,39 @@ async function fetchByteRange(url, range, fetchImpl, signal) {
   return Buffer.concat(chunks,count)
 }
 
-async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', directory=null }={}) {
+async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', directory=null, onDiagnostic }={}) {
+  const startedAt=Date.now()
   const plan=parseHybrid(raw,addonBase)
+  report(onDiagnostic,'hybrid-plan',{ranges:plan.ranges.length,encrypted:plan.encrypted})
   const dir = directory || (require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache'))
   await fs.mkdir(dir,{recursive:true})
   const digest=crypto.createHash('sha256')
     .update(key+'\n'+plan.url+'\n'+JSON.stringify(plan.ranges)+'\n'+plan.key)
     .digest('hex').slice(0,24)
   const dest=path.join(dir,'addon-hybrid-'+digest+'.m4a')
-  if((await fs.stat(dest).catch(()=>null))?.size>0)return dest
+  if((await fs.stat(dest).catch(()=>null))?.size>0){
+    report(onDiagnostic,'hybrid-cache-hit')
+    return dest
+  }
   const tmp=dest+'.'+process.pid+'.'+crypto.randomBytes(6).toString('hex')+'.part'
   let handle
   try {
     handle=await fs.open(tmp,'wx')
-    const init=await fetchByteRange(plan.url,plan.init,fetchImpl,signal)
+    const init=await fetchByteRange(plan.url,plan.init,fetchImpl,signal).catch(error=>{
+      report(onDiagnostic,'hybrid-range-failed',{index:0,name:error?.name||'Error'})
+      throw error
+    })
     let config={ivSize:plan.ivSize,constantIv:plan.constantIv}
     const keyBytes=plan.encrypted?Buffer.from(plan.key,'hex'):null
     if (keyBytes) config=openInit(init)
     // The transport's constant IV is a fallback when the init omits one.
     if(!config.constantIv?.length) config.constantIv=plan.constantIv
     await handle.writeFile(init)
-    for (const range of plan.ranges) {
-      const chunk=await fetchByteRange(plan.url,range,fetchImpl,signal)
+    for (const [index,range] of plan.ranges.entries()) {
+      const chunk=await fetchByteRange(plan.url,range,fetchImpl,signal).catch(error=>{
+        report(onDiagnostic,'hybrid-range-failed',{index:index+1,name:error?.name||'Error'})
+        throw error
+      })
       if(keyBytes)openFragment(chunk,keyBytes,config,range.start)
       await handle.writeFile(chunk)
     }
@@ -111,8 +126,10 @@ async function stageHybrid(raw, addonBase, { fetchImpl=fetch, signal, key='', di
     // No authoritative list of its open files exists in Electron main, so
     // trim only once the entire selected playback session has ended.
     if (!directory) require('./stagedMediaTrim').requestTrimAfterPlayback()
+    report(onDiagnostic,'hybrid-complete',{ranges:plan.ranges.length,bytes:(await fs.stat(dest)).size,durationMs:Date.now()-startedAt})
     return dest
   } catch(error) {
+    report(onDiagnostic,'hybrid-stage-failed',{name:error?.name||'Error'})
     await handle?.close().catch(()=>{})
     await fs.unlink(tmp).catch(()=>{})
     throw error
