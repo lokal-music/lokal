@@ -34,6 +34,7 @@ import { DISCOVERY_SHELF_DEFAULTS, DISCOVERY_SHELF_TITLES, readShelfLayout, rest
 import FlowPanel from '../components/FlowPanel'
 import { madeForYou } from '../madeForYou'
 import { personalizedHomeMessages } from '../homeGreeting.mjs'
+import { useAppearanceFlag } from '../appearanceFlags'
 
 const today = () => new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 const mixTitle = (mix) => (mix.type === 'artist' ? `${mix.name} Mix` : mix.name)
@@ -320,6 +321,7 @@ export default function Home() {
 
 function HomeContent({ user }) {
   const { t } = useTranslation()
+  const showHomeGreeting = useAppearanceFlag('home_greeting')
   const uidKey = user?.id || 'guest'
   const [recentTracks, setRecentTracks] = useCachedState(`home:recent:${uidKey}`, [])
   const [suggestions, setSuggestions] = useCachedState(`home:suggestions:${uidKey}`, [])
@@ -735,13 +737,17 @@ function HomeContent({ user }) {
   </>
 
   const hour = new Date().getHours()
-  // Keep the same history-aware headline/subheader pair on every Home tab.
-  const homeMessages = personalizedHomeMessages(localHistory, { hour })
-  const headlineMessage = t(homeMessages.headline)
-  const subheaderMessage = t(homeMessages.subheader)
+  // Every Home tab shares one header and one appearance preference.
+  // Omitting the entire block removes its height and the container gap.
+  const homeMessages = showHomeGreeting
+    ? personalizedHomeMessages(localHistory, { hour })
+    : null
 
   return <div className="p-6 space-y-7 w-full max-w-6xl mx-auto pb-10">
-    <div><h1 className="text-2xl font-display text-white">{headlineMessage}</h1><p className="text-sm text-muted mt-1">{t(subheaderMessage)}</p></div>
+    {showHomeGreeting && <div data-home-greeting>
+      <h1 className="text-2xl font-display text-white">{t(homeMessages.headline)}</h1>
+      <p className="text-sm text-muted mt-1">{t(homeMessages.subheader)}</p>
+    </div>}
     <div className="flex gap-1 p-0.5 bg-elevated rounded-lg border border-border w-fit">{[['home', 'Local'], ['discovery', 'Discovery'], ['flow', 'Flow'], ['releases', 'Releases'], ['history', 'History']].map(([id, label]) => <button key={id} onClick={() => goHome(id)} className={`px-4 py-1.5 text-xs font-display uppercase tracking-wider rounded transition-colors ${tab === id ? 'bg-accent text-base' : 'text-muted hover:text-white'}`}>{label}</button>)}</div>
     <SectionSwap id={tab} className="space-y-10">
       {tab === 'history' ? <section>
