@@ -496,7 +496,19 @@ function saveOnlineTracks(db, items = []) {
       track_num: positive(item.track_num ?? item.trackNumber),
       genre: typeof item.genre === 'string' && item.genre.trim() ? item.genre.trim().slice(0, 100) : null,
       isrc: (() => { try { return require('../quality').normalizeIsrc(item.isrc) || null } catch { return null } })(),
-      ...streamQuality(item.quality || item.format),
+      // Keep an explicit codec and resolution from the add-on search response.
+      // The old generic quality parser only received "FLAC", dropping the
+      // 24-bit / 44.1 kHz fields before the player saved its ghost row.
+      ...(() => {
+        const parsed = streamQuality(item.format || item.quality)
+        const bits = Number(item.bit_depth ?? item.bitDepth)
+        const rate = Number(item.sample_rate ?? item.sampleRate)
+        return {
+          ...parsed,
+          bit_depth: Number.isInteger(bits) && bits >= 8 && bits <= 64 ? bits : parsed.bit_depth,
+          sample_rate: Number.isInteger(rate) && rate >= 8000 && rate <= 768000 ? rate : parsed.sample_rate,
+        }
+      })(),
     })
     return get.get(id)
   }))
