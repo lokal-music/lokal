@@ -38,7 +38,9 @@ export default function DiscoveryImage({ item, type = 'track', src, className = 
       const excluded = [...discarded.current]
       const [result] = await api.discoveryArtwork([{
         type, title, artist, exclude: broken || '', excludes: excluded,
-        remoteOnly: excluded.length > 0,
+        // Local library art is still a valid first fallback; previously
+        // failed local files are excluded on the next attempt.
+        remoteOnly: false,
       }])
       if (request.current !== generation) return
       const found = result?.image
