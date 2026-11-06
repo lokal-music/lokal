@@ -48,3 +48,10 @@ test('Atmos mode alone is not stereo catalogue quality', () => {
   assert.equal(advertisedQuality({ quality: '24bit/96kHz', audio_quality: 'DOLBY_ATMOS' }), '24-bit / 96 kHz')
   assert.equal(advertisedQuality({ audio_quality: 'DOLBY_ATMOS', bit_depth: 24, sample_rate: 96000 }), '24-bit / 96 kHz')
 })
+
+test('LastWave search FLAC advertises lossless without fabricating bit depth', () => {
+  assert.equal(advertisedQuality({ quality: 'flac' }), 'FLAC · Lossless')
+  assert.equal(advertisedQuality({ quality: 'flac', bit_depth: 24, sample_rate: 44100 }), '24-bit / 44.1 kHz')
+  assert.equal(advertisedQuality({ quality: 'LOSSLESS', bit_depth: 16, sample_rate: 48000 }), '16-bit / 48 kHz')
+})
+

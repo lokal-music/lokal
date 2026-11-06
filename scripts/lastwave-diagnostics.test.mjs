@@ -83,3 +83,22 @@ test('DASH staging reports segment failure position without revealing its signed
     assert.ok(!JSON.stringify(events).includes('sig=private'))
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
+
+test('LastWave failed artwork recovery is connected through search and all player covers', async () => {
+  const { readFileSync } = await import('node:fs')
+  const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8')
+  const search = read('src/components/OnlineResults.jsx')
+  const player = read('src/components/PlayerBar.jsx')
+  const mini = read('src/components/MiniPlayer.jsx')
+  const full = read('src/components/FullscreenPlayer.jsx')
+  const component = read('src/components/StreamArtwork.jsx')
+  const backend = read('electron/ipc/online.js')
+  assert.match(search, /<DiscoveryImage item=\{item\} src=\{item\.thumbnail\} lookup/)
+  assert.match(search, /onResolved=\{image => setResults/)
+  for (const text of [player, mini, full]) assert.match(text, /<StreamArtwork track=\{/)
+  assert.match(component, /rememberRecoveredStreamArtwork\(track, image\)/)
+  assert.match(component, /repairOnlineArtwork\?\./)
+  assert.match(backend, /online:repairArtwork/)
+  assert.match(backend, /file_path LIKE 'ghost:\/\/addon\/%'/)
+})
+

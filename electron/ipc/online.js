@@ -193,6 +193,22 @@ function registerOnlineHandlers(ipcMain) {
   // A misspelt search ("micheal jackson"): the library's spelling, else YouTube Music's.
   ipcMain.handle('online:spelling', (_, query) => spelling(getDB(), query))
   ipcMain.handle('online:artwork', (_, items) => discoveryArtwork(items))
+  // Repair only the stale cover of an existing add-on ghost. Never overwrite
+  // a newly imported file, a user-selected cover, or a changed ghost image.
+  ipcMain.handle('online:repairArtwork', (_, trackId, previous, image) => {
+    try {
+      if (typeof trackId !== 'string' || trackId.length > 200 || typeof image !== 'string' || image.length > 1000) return false
+      const url = new URL(image)
+      if (url.protocol !== 'https:' || url.username || url.password) return false
+      if (previous != null && (typeof previous !== 'string' || previous.length > 1000)) return false
+      const result = getDB().prepare(`
+        UPDATE tracks SET artwork_url = ?
+        WHERE id = ? AND file_path LIKE 'ghost://addon/%'
+          AND COALESCE(artwork_url, '') = ?
+      `).run(image, trackId, previous || '')
+      return result.changes > 0
+    } catch { return false }
+  })
   ipcMain.handle('online:signIn', (event, options) => accountSession.signIn({ mode: options?.mode || 'embedded', onProgress: status => { if (!event.sender.isDestroyed()) event.sender.send('online:signInStatus', status) } }))
   ipcMain.handle('online:cancelSignIn', () => accountSession.cancelSignIn())
   ipcMain.handle('online:disconnect', () => accountSession.disconnect())

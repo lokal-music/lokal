@@ -24,7 +24,8 @@ import { api, wordSyncEnabled } from '../api'
 import { contextLabel, isContextNavigable, navigateToContext, navigateToTrackAlbum } from '../playbackContext'
 import { isStationTrack } from '../radio/stations'
 import { navigateToRadioAlbum } from '../radio/stationAlbum'
-import { trackArtURL, trackFullArtURL } from '../onlineTracks'
+import { trackArtURL, trackFullArtURL, isStreamed } from '../onlineTracks'
+import StreamArtwork from './StreamArtwork'
 import { useVolumeWheel } from '../volumeWheel'
 import { usePerformanceMode } from '../performanceMode'
 import { isSuspect, tierOf, qualityTagLabel } from '../quality'
@@ -245,6 +246,9 @@ function FullscreenStillArtwork({ track }) {
   useEffect(() => setFailed(false), [track])
   const full = trackFullArtURL(track) || trackArtURL(track)
   const fallback = trackArtURL(track)
+  if (isStreamed(track)) return <StreamArtwork track={track} src={full}
+    className="absolute inset-0 w-full h-full object-cover" alt=""
+    fallback={<div className="absolute inset-0 flex items-center justify-center text-white/10 text-7xl">♪</div>} />
   return <img src={failed ? fallback : full}
     onError={() => { if (!failed && fallback && fallback !== full) setFailed(true) }}
     className="absolute inset-0 w-full h-full object-cover" alt="" />
@@ -993,7 +997,7 @@ export default function FullscreenPlayer() {
                 <div className={spinCd ? "absolute inset-0 fullscreen-cd-disc" : "absolute inset-0"}
                   style={spinCd ? { animationPlayState: animationRunning ? "running" : "paused" } : undefined}>
                 <div className={spinCd ? "fullscreen-cd-artwork absolute inset-0" : "absolute inset-0"}>
-                {artSrc
+                {(artSrc || isStreamed(currentTrack))
                   ? <MixCovers track={currentTrack} render={(track, { top }) => (
                       <>
                         <FullscreenStillArtwork track={track} />

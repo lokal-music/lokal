@@ -14,6 +14,9 @@ export function advertisedQuality(track) {
   const suffix = [bits ? `${bits}-bit` : '', rate ? `${Number(rate.toFixed(2))} kHz` : ''].filter(Boolean).join(' / ')
   if (suffix) return suffix
   if (isAtmosMode) return ''
+  // FLAC identifies a lossless codec, not a particular PCM resolution.
+  // Show the distinction without pretending the provider reported bit depth.
+  if (/^flac$/i.test(q)) return 'FLAC · Lossless'
   switch (q.toUpperCase()) {
     case 'HI_RES_LOSSLESS': return 'Hi-res lossless'
     case 'LOSSLESS': return 'Lossless'

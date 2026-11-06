@@ -27,6 +27,7 @@ const net = require('net')
 const { headersForSignedAddon } = require('./httpAddonSigning')
 const { extractManifest, stageAddonDash } = require('./addonDash')
 const { stageHybrid } = require('./addonHybrid')
+const { streamQuality } = require('./streamQuality')
 
 const SETTINGS_KEY = 'addons'
 const TIMEOUT_MS = { manifest: 10000, search: 10000, stream: 15000, catalogue: 15000 }
@@ -340,6 +341,39 @@ function durationOf(t) {
 const idOf = value => (value == null || value === '' ? null : String(value).slice(0, 300))
 const positive = value => (Number(value) > 0 ? Math.floor(Number(value)) : null)
 const httpsImage = value => (/^https:\/\//.test(String(value || '')) ? String(value).slice(0, 1000) : null)
+
+// Like mobile, retain *reported* catalogue audio details separately from
+// the codec. Do not guess a bit depth or sample rate from "FLAC" alone.
+function reportedAudioDetails(row) {
+  const layers = [row, row?.audio, row?.metadata, row?.audioMetadata, row?.audio_metadata]
+    .filter(value => value && typeof value === 'object' && !Array.isArray(value))
+  const value = (...keys) => {
+    for (const layer of layers) for (const key of keys) {
+      if (layer[key] !== undefined && layer[key] !== null && layer[key] !== '') return layer[key]
+    }
+    return null
+  }
+  const format = String(value('format', 'audioFormat', 'codec', 'audioCodec') || '').slice(0, 80)
+  const parsed = streamQuality(format)
+  const rawDepth = Number(value('bitDepth', 'bit_depth', 'bitsPerSample', 'bits_per_sample'))
+  const bitDepth = Number.isInteger(rawDepth) && rawDepth >= 8 && rawDepth <= 64 ? rawDepth : parsed.bit_depth
+  let sampleRate = parsed.sample_rate
+  const rawRate = value('sampleRate', 'sample_rate', 'samplingRate', 'sampling_rate', 'audioSampleRate', 'audio_sample_rate')
+  if (rawRate !== null) {
+    const text = String(rawRate).trim()
+    const number = Number(text.replace(/\s*(?:k\s*hz|hz)\s*$/i, '').trim())
+    const hz = /k\s*hz$/i.test(text) || number < 1000 ? number * 1000 : number
+    if (Number.isFinite(hz) && hz >= 8000 && hz <= 768000) sampleRate = Math.round(hz)
+  }
+  const reportedQuality = value('audioQuality', 'audio_quality', 'quality', 'streamQuality', 'stream_quality')
+  const quality = String(reportedQuality || format).trim().slice(0, 80)
+  return {
+    format: format || null,
+    quality: quality || null,
+    bit_depth: bitDepth || null,
+    sample_rate: sampleRate || null,
+  }
+}
 const RELEASE_TYPES = new Set(['album', 'single', 'ep', 'compilation', 'live'])
 
 /** One addon track, as Lokal's online results carry it. */
@@ -356,6 +390,7 @@ function trackOf(t, provider) {
     ? t.album.title || t.album.name || t.album.albumName || t.album.album_name
     : t.album
   const albumId = t.albumId ?? t.album_id ?? (typeof t.album === 'object' ? t.album?.id ?? t.album?.albumId ?? t.album?.album_id : null)
+  const audio = reportedAudioDetails(t)
   return {
     provider,
     id: String(t.id).slice(0, 300),
@@ -372,8 +407,11 @@ function trackOf(t, provider) {
     isrc: t.isrc ? String(t.isrc).slice(0, 20) : null,
     genre: typeof t.genre === 'string' && t.genre.trim() ? t.genre.trim().slice(0, 100) : null,
     duration: durationOf(t),
-    thumbnail: httpsImage(t.artworkURL || t.albumArtworkURL || t.artworkUrl || t.albumArtworkUrl || t.coverUrl || t.thumbnailUrl || t.artwork || t.thumbnail),
-    quality: t.format ? String(t.format).slice(0, 40) : null,
+    thumbnail: [
+      t.artworkURL, t.albumArtworkURL, t.artworkUrl, t.albumArtworkUrl,
+      t.coverUrl, t.thumbnailUrl, t.cover, t.artwork, t.thumbnail,
+    ].map(httpsImage).find(Boolean) || null,
+    ...audio,
     kind: 'song',
   }
 }

@@ -7,7 +7,7 @@ import QualityImage from './QualityImage'
  * @param lookup  with no `src` at all, look a cover up too (Last.fm's album
  *                lists often have none)
  */
-export default function DiscoveryImage({ item, type = 'track', src, className = '', fallback = null, lookup = false }) {
+export default function DiscoveryImage({ item, type = 'track', src, className = '', fallback = null, lookup = false, onResolved, ...imgProps }) {
   const [replacement, setReplacement] = useState('')
   const [failed, setFailed] = useState(false)
   const request = useRef(0)
@@ -27,5 +27,7 @@ export default function DiscoveryImage({ item, type = 'track', src, className = 
     return () => { request.current++ }
   }, [src, lookup, item?.title]) // eslint-disable-line react-hooks/exhaustive-deps
   if ((!src && !replacement) || failed) return fallback || <div className="flex h-full w-full items-center justify-center text-muted"><Music size={28} /></div>
-  return <QualityImage src={replacement || src} className={className} onError={retry} />
+  return <QualityImage {...imgProps} src={replacement || src} className={className}
+    onError={retry}
+    onLoad={() => { if (replacement && replacement !== src) onResolved?.(replacement) }} />
 }
