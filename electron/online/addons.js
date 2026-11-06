@@ -138,7 +138,7 @@ async function getJson(url, { timeoutMs, fetchImpl = fetch, addonIntent = null, 
   try {
     const res = await fetchChecked(url, { fetchImpl, signal: controller.signal, addonIntent, signingKey, onDiagnostic })
     const text = await res.text()
-    report(onDiagnostic, 'addon-json-body', { status: res.status, bytes: Buffer.byteLength(text), json: /^\\s*[\\[{]/.test(text) })
+    report(onDiagnostic, 'addon-json-body', { status: res.status, bytes: Buffer.byteLength(text), json: text.trimStart().startsWith('{') || text.trimStart().startsWith('[') })
     if (text.length > MAX_BYTES) throw new Error('The addon sent too much data.')
     let json = null
     try { json = JSON.parse(text) } catch {}
