@@ -107,6 +107,9 @@ async function search(query, provider = 'yt', options = {}) {
       fallbackSearch: youtubeFallback, addonTimeoutMs,
     })
   } catch (e) {
+    if (sources.addons.keyOfProvider(provider)) {
+      log.warn(`[online-addon-search] ${JSON.stringify({ provider, error: safeStreamError(e) })}`)
+    }
     return { error: e.message, results: [] }
   }
 }
@@ -373,6 +376,7 @@ function registerOnlineHandlers(ipcMain) {
   ipcMain.handle('musicVideo:cancelIndex', () => { if (videoIndexJob) videoIndexJob.cancelled = true })
   ipcMain.handle('musicVideo:indexStatus', () => videoIndexStatus)
   ipcMain.handle('online:prepare', async (_, provider, id, force = false, options = {}) => {
+    const diagnostic = streamDiagnostic(provider, id)
     try {
       const key = sources.addons.keyOfProvider(provider)
       if (key && sources.addons.packageService(getDB()).find(key)) return require('../mornye/media').prepare(getDB(), key, id, { force: !!force })
@@ -380,8 +384,12 @@ function registerOnlineHandlers(ipcMain) {
       // Bound the actual HTTP request, not only the renderer's Promise.race.
       const addonTimeoutMs = key && options?.automatic === true ? 3000 : undefined
       const stream = await sources.resolveStream(provider, id, { ...streamOptions(), force: !!force, addonTimeoutMs })
+      logAddonStream(diagnostic, 'prepared', { transport: stream.type || 'url' })
       return { ok: true, preview: !!stream.preview }
-    } catch (e) { return { error: e.message } }
+    } catch (e) {
+      logAddonStream(diagnostic, 'prepare-failed', { error: safeStreamError(e) }, 'warn')
+      return { error: e.message }
+    }
   })
 }
 
