@@ -191,6 +191,7 @@ contextBridge.exposeInMainWorld('electron', {
   onlineGenre: (trackId) => invoke('online:genre', trackId),
   searchSpelling: (q) => invoke('online:spelling', q),
   discoveryArtwork: (items) => invoke('online:artwork', items),
+  repairOnlineArtwork: (trackId, previous, image) => invoke('online:repairArtwork', trackId, previous, image),
   youtubeCatalogue: (options) => invoke('online:catalogue', options),
   youtubeAccount: (force = false) => invoke('online:account', force),
   youtubeSignIn: options => invoke('online:signIn', options),
