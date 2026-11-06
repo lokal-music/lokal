@@ -22,6 +22,7 @@ import { atmosDownloadRef, downloadAtmosVersion } from '../atmosDownloads'
 import SoulseekSearch from './SoulseekSearch'
 import DownloadNotices from './DownloadNotices'
 import SourceIcon from './SourceIcon'
+import DiscoveryImage from './DiscoveryImage'
 import AddonSetupNotice from './AddonSetupNotice'
 import { DEFAULT_SEARCH_SOURCES, orderedFindOnSources } from '../findOnSources'
 import { useTranslation } from '../i18n'
@@ -335,7 +336,16 @@ export default function OnlineResults({ query, soulseekFor = null, findOn = null
                   aria-label={t('{action} {title}', { action: t(current && isPlaying ? 'Pause' : 'Play'), title: item.title })}
                   className="relative w-10 h-10 rounded overflow-hidden bg-card flex items-center justify-center text-muted"
                 >
-                  {item.thumbnail ? <img src={item.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" /> : <Music size={14} />}
+                  {isAddonProvider(item.provider)
+                     ? <DiscoveryImage item={item} src={item.thumbnail} lookup
+                         className="w-full h-full object-cover" referrerPolicy="no-referrer"
+                         fallback={<Music size={14} />}
+                         onResolved={image => setResults(current => current.map(row =>
+                           row.provider === item.provider && row.id === item.id && row.thumbnail === item.thumbnail
+                             ? { ...row, thumbnail: image } : row))} />
+                     : item.thumbnail
+                       ? <img src={item.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                       : <Music size={14} />}
                   <span className={`absolute inset-0 flex items-center justify-center bg-black/50 text-white transition-opacity ${current ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                     {current && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="translate-x-px" />}
                   </span>
