@@ -124,10 +124,11 @@ function createArtworkResolver({ getDB = () => null, isElectron = false, fetchIm
     return best.url
   }
   const resolve = async raw => {
+    const excludedRef = value => imageUrl(value) || (/^file:\/\//i.test(String(value || '')) ? String(value) : '')
     const excludes = [...new Set([
       raw?.exclude,
       ...(Array.isArray(raw?.excludes) ? raw.excludes.slice(0, 6) : []),
-    ].map(imageUrl).filter(Boolean))]
+    ].map(excludedRef).filter(Boolean))]
     const item = {
       type: ['artist', 'album', 'track'].includes(raw?.type) ? raw.type : 'track',
       title: String(raw?.title || '').slice(0, 300),
