@@ -102,10 +102,19 @@ async function search(query, provider = 'yt', options = {}) {
       sources.addons.searchable(getDB()).some(addon =>
         addon.provider === provider && addon.kind !== 'mornye')
     const addonTimeoutMs = options?.automatic === true && isHttpAddon ? 3000 : undefined
-    return await sources.search(sources.providerOf(provider) ? provider : 'yt', query, {
+    const startedAt = Date.now()
+    const onDiagnostic = isHttpAddon ? ({ event, ...details }) => {
+      log.info(`[online-addon-search] ${JSON.stringify({ provider, event, ...details })}`)
+    } : undefined
+    onDiagnostic?.({ event: 'search-start', automatic: options?.automatic === true, timeoutMs: addonTimeoutMs || 10000 })
+    const result = await sources.search(sources.providerOf(provider) ? provider : 'yt', query, {
       db: getDB(), ytdlp: findYtDlp(), fetchImpl: auth.fetchImpl,
-      fallbackSearch: youtubeFallback, addonTimeoutMs,
+      fallbackSearch: youtubeFallback, addonTimeoutMs, onDiagnostic,
     })
+    onDiagnostic?.({ event: 'search-finished', count: result?.results?.length || 0,
+      withArtwork: result?.results?.filter(track => !!track.thumbnail).length || 0,
+      durationMs: Date.now() - startedAt })
+    return result
   } catch (e) {
     if (sources.addons.keyOfProvider(provider)) {
       log.warn(`[online-addon-search] ${JSON.stringify({ provider, error: safeStreamError(e) })}`)
@@ -377,13 +386,16 @@ function registerOnlineHandlers(ipcMain) {
   ipcMain.handle('musicVideo:indexStatus', () => videoIndexStatus)
   ipcMain.handle('online:prepare', async (_, provider, id, force = false, options = {}) => {
     const diagnostic = streamDiagnostic(provider, id)
+    logAddonStream(diagnostic, 'prepare-start', { forced: !!force, automatic: options?.automatic === true })
     try {
       const key = sources.addons.keyOfProvider(provider)
       if (key && sources.addons.packageService(getDB()).find(key)) return require('../mornye/media').prepare(getDB(), key, id, { force: !!force })
       if (provider === 'yt') await accountSession.credentials()
       // Bound the actual HTTP request, not only the renderer's Promise.race.
       const addonTimeoutMs = key && options?.automatic === true ? 3000 : undefined
-      const stream = await sources.resolveStream(provider, id, { ...streamOptions(), force: !!force, addonTimeoutMs })
+      const stream = await sources.resolveStream(provider, id, { ...streamOptions(), force: !!force, addonTimeoutMs,
+        onDiagnostic: ({ event, ...details }) => logAddonStream(diagnostic, event, details),
+      })
       logAddonStream(diagnostic, 'prepared', { transport: stream.type || 'url' })
       return { ok: true, preview: !!stream.preview }
     } catch (e) {
@@ -985,6 +997,7 @@ function registerStreamProtocol(protocol, net) {
       const { res, mime } = await sources.fetchStream(provider, id, {
         ...streamOptions(), range, signal: upstream.signal, fetchImpl,
         onPhase: phase => report(phase),
+        onDiagnostic: ({ event, ...details }) => logAddonStream(diagnostic, event, details),
       })
       const headers = new Headers()
       for (const name of PASS_HEADERS) { const v = res.headers.get(name); if (v) headers.set(name, v) }
