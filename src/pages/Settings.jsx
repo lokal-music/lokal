@@ -2151,6 +2151,15 @@ activeCategory === 'data' ? usersTried
       )}
       {inCategory('appearance') && (
       <Section title={t("Home")}>
+        <Row label={t("Home greeting and subheader")} desc={t("Show the personalized greeting and subheader above the Home tabs. Turn this off to save vertical space across Local, Discovery, Flow, Releases, and History.")}>
+          <button type="button"
+            aria-label={t("Show Home greeting and subheader")}
+            aria-pressed={settings.home_greeting !== '0'}
+            onClick={() => set('home_greeting', settings.home_greeting === '0' ? '1' : '0')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-display uppercase tracking-wider border transition-colors ${settings.home_greeting !== '0' ? 'bg-accent/20 border-accent/50 text-accent' : 'border-border text-muted hover:text-white'}`}>
+            {settings.home_greeting !== '0' ? t('On') : t('Off')}
+          </button>
+        </Row>
         <Row label={t("Cover Flow")} desc={t("Show classic iTunes-style Cover Flow on Home → Local. Turn this off to restore the original cylindrical carousel. This choice is independent of Windows animation settings.")}>
           <button type="button"
             aria-label={t("Enable Cover Flow on Home")}
