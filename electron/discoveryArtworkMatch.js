@@ -8,7 +8,7 @@ const harmlessBrackets = /\s*[([](?:explicit|clean)(?:\s+version)?|official (?:m
 const sameRecording = '(?:(?:\\d{4}\\s+)?(?:digital(?:ly)?\\s+)?remaster(?:ed)?(?:\\s+\\d{4})?(?:\\s+version)?|(?:album|single|mono|stereo|lp)\\s+version|original\\s+mix|mono|stereo)'
 const remasterBracket = new RegExp('\\s*[(\\[]' + sameRecording + '[)\\]]', 'gi')
 const remasterSuffix = new RegExp('\\s+[-–—]\\s+' + sameRecording + '\\s*$', 'gi')
-const recordingVersions = /\b(?:remix|live|cover|instrumental|acoustic|karaoke|edit|sped up|slowed|nightcore)\b/g
+const recordingVersions = /\b(?:remix|live|cover|instrumental|acoustic|karaoke|edit|sped up|slowed|nightcore)\b/
 const stopWords = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'in', 'of', 'on', 'the', 'to', 'with'])
 const knownCommaArtists = ['Tyler, The Creator', 'Earth, Wind & Fire', 'Crosby, Stills, Nash & Young', 'Crosby, Stills & Nash', 'Emerson, Lake & Palmer']
 
