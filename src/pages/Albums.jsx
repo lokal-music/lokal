@@ -39,6 +39,10 @@ function getAlbumArtwork(album) {
   return api.albumArtURL(album)
 }
 
+function getAlbumFullArtwork(album) {
+  return api.albumFullArtURL(album) || getAlbumArtwork(album)
+}
+
 function releaseLabel(type) {
   if (type === 'single') return 'Single'
   if (type === 'ep') return 'EP'
@@ -50,6 +54,7 @@ function releaseLabel(type) {
 function AlbumHero({ album, trackCount, duration, online, onBack, onArtist, children }) {
   const { t } = useTranslation()
   const artSrc = getAlbumArtwork(album)
+  const fullArtSrc = getAlbumFullArtwork(album)
   const artistName = album.album_artist || album.artists || ''
   // The cover, big (click it).
   const [zoom, setZoom] = useState(false)
@@ -61,11 +66,14 @@ function AlbumHero({ album, trackCount, duration, online, onBack, onArtist, chil
         <ArrowLeft size={14} /> {t('Back')}
       </button>
       <div className="flex flex-col gap-5 @md:flex-row @md:items-end">
-        <ImageZoom src={artSrc} alt={album.title} open={zoom} onClose={() => setZoom(false)} />
+        <ImageZoom src={fullArtSrc} alt={album.title} open={zoom} onClose={() => setZoom(false)} />
         <div onClick={artSrc ? () => setZoom(true) : undefined} title={artSrc ? 'View the cover' : undefined}
           className={`h-44 w-44 flex-shrink-0 overflow-hidden rounded-2xl border border-border bg-elevated shadow-xl ${artSrc ? 'cursor-zoom-in' : ''}`}>
           {artSrc
-            ? <img src={artSrc} alt={album.title} className="h-full w-full object-cover" />
+            ? <div className="relative h-full w-full">
+                <img src={artSrc} alt={album.title} className="h-full w-full object-cover" />
+                {fullArtSrc !== artSrc && <img src={fullArtSrc} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" decoding="async" onError={event => { event.currentTarget.style.display = 'none' }} />}
+              </div>
             : <div className="flex h-full w-full items-center justify-center text-muted"><Disc3 size={52} /></div>}
         </div>
         <div className="min-w-0">
@@ -92,6 +100,7 @@ function AlbumHero({ album, trackCount, duration, online, onBack, onArtist, chil
 function AlbumCard({ album, onClick, onPlay, onContextMenu, selected = false }) {
   const { t } = useTranslation()
   const artSrc = getAlbumArtwork(album)
+  const fullArtSrc = getAlbumFullArtwork(album)
 
   return (
     <motion.div
@@ -106,7 +115,10 @@ function AlbumCard({ album, onClick, onPlay, onContextMenu, selected = false }) 
         {artSrc ? (
           // (A blurred copy used to sit under the cover, entirely hidden by
           // it: a full-size blur per card for nothing.)
-          <FadeImg src={artSrc} alt={album.title} className="relative h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+          <>
+            <FadeImg src={artSrc} alt={album.title} className="relative h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+            {fullArtSrc !== artSrc && <FadeImg src={fullArtSrc} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />}
+          </>
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Disc3 size={34} className="text-muted" />
