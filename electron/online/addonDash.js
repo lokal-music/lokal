@@ -14,6 +14,10 @@ const MAX_AUDIO_BYTES = 512 * 1024 * 1024
 const SEGMENT_BYTES = 16 * 1024 * 1024
 const TIMEOUT_MS = 30000
 
+function report(onDiagnostic, event, details = {}) {
+  try { onDiagnostic?.({ event, ...details }) } catch { /* Never let diagnostics disrupt a stream. */ }
+}
+
 async function boundedResponse(response, maxBytes, errorMessage) {
   if (!response.body) throw new Error(errorMessage)
   const advertised = Number(response.headers?.get?.('content-length'))
@@ -154,21 +158,28 @@ function parseStaticMpd(xml, manifestBase, addonBase) {
 }
 
 /** Downloads and joins the selected audio representation in the playback cache. */
-async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, key = '', directory = null } = {}) {
+async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, key = '', directory = null, onDiagnostic } = {}) {
+  const startedAt = Date.now()
   let xml = manifest.xml
+  report(onDiagnostic, 'dash-manifest-start', { inline: !!xml })
   if (!xml) {
     const response = await fetchImpl(guardMediaUrl(manifest.url, addonBase), {
       signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
     })
+    report(onDiagnostic, 'dash-manifest-response', { status: response.status })
     if (!response.ok) throw new Error('The DASH manifest could not be fetched.')
     xml = (await boundedResponse(response, MAX_MPD_BYTES, 'DASH manifest is too large.')).toString('utf8')
   }
   const plan = parseStaticMpd(xml, manifest.base, addonBase)
+  report(onDiagnostic, 'dash-plan', { segments: plan.segments.length, manifestBytes: Buffer.byteLength(xml) })
   const dir = directory || (require('../cache').cacheDir('playback') || path.join(os.tmpdir(), 'lokal-playback-cache'))
   await fsp.mkdir(dir, { recursive: true })
   const digest = crypto.createHash('sha256').update(key + '\n' + xml).digest('hex').slice(0, 24)
   const dest = path.join(dir, 'addon-dash-' + digest + '.m4a')
-  if ((await fsp.stat(dest).catch(() => null))?.size > 0) return dest
+  if ((await fsp.stat(dest).catch(() => null))?.size > 0) {
+    report(onDiagnostic, 'dash-cache-hit')
+    return dest
+  }
   // Never overwrite (or clean up) another in-flight staging attempt.
   const tmp = dest + '.' + process.pid + '.' + crypto.randomBytes(6).toString('hex') + '.part'
   let length = 0
@@ -177,12 +188,15 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
     // WriteStream would emit an unhandled 'error' event in Electron main.
     const output = await fsp.open(tmp, 'wx')
     try {
-      for (const address of [plan.initUrl, ...plan.segments]) {
+      for (const [index, address] of [plan.initUrl, ...plan.segments].entries()) {
         if (signal?.aborted) throw signal.reason || new Error('DASH playback was cancelled.')
         const response = await fetchImpl(address, {
           signal: signal || AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
         })
-        if (!response.ok || !response.body) throw new Error('The DASH audio segment could not be fetched.')
+        if (!response.ok || !response.body) {
+          report(onDiagnostic, 'dash-segment-response', { index, status: response.status, ok: false })
+          throw new Error('The DASH audio segment could not be fetched.')
+        }
         const part = await boundedResponse(response, Math.min(SEGMENT_BYTES, MAX_AUDIO_BYTES - length), 'DASH audio exceeds playback limits.')
         if (!part.length || (length += part.length) > MAX_AUDIO_BYTES) throw new Error('DASH audio exceeds playback limits.')
         await output.writeFile(part)
@@ -195,8 +209,10 @@ async function stageAddonDash(manifest, addonBase, { fetchImpl = fetch, signal, 
     // No authoritative list of its open files exists in Electron main, so
     // trim only once the entire selected playback session has ended.
     if (!directory) require('./stagedMediaTrim').requestTrimAfterPlayback()
+    report(onDiagnostic, 'dash-complete', { bytes: length, segments: plan.segments.length, durationMs: Date.now() - startedAt })
     return dest
   } catch (error) {
+    report(onDiagnostic, 'dash-stage-failed', { name: error?.name || 'Error', completedBytes: length })
     await fsp.unlink(tmp).catch(() => {})
     throw error
   }
