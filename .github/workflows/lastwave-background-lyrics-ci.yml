@@ -7,6 +7,15 @@ on:
       - 'electron/ipc/online.js'
       - 'src/api.js'
       - 'src/pages/Albums.jsx'
+      - 'src/components/DiscoveryImage.jsx'
+      - 'src/components/StreamArtwork.jsx'
+      - 'src/components/OnlineResults.jsx'
+      - 'src/components/PlayerBar.jsx'
+      - 'src/components/MiniPlayer.jsx'
+      - 'src/components/FullscreenPlayer.jsx'
+      - 'src/catalogueQuality.js'
+      - 'scripts/catalogue-quality.test.mjs'
+      - 'electron/preload.js'
       - 'electron/online/addonDash.js'
       - 'electron/online/addonHybrid.js'
       - 'electron/online/stagedMediaTrim.js'
@@ -60,6 +69,7 @@ jobs:
           node --test \
             scripts/lastwave-desktop-port.test.mjs \
             scripts/lastwave-diagnostics.test.mjs \
+            scripts/catalogue-quality.test.mjs \
             scripts/album-full-artwork.test.mjs \
             scripts/lastwave-hybrid-cenc.test.mjs \
             scripts/staged-media-cache-trim.test.mjs \
