@@ -236,7 +236,6 @@ function RepositoryBrowser({ onChanged }) {
   const { t } = useTranslation()
   // Empty: the official repository is already listed below.
   const [url, setUrl] = useState('')
-  const [installKey, setInstallKey] = useState('')
   const [repos, setRepos] = useState([])
   const [entries, setEntries] = useState([])
   const [busy, setBusy] = useState(false)
@@ -283,6 +282,7 @@ export default function AddonsSettings() {
   const [addons, setAddons] = useState(() => peekCache('settings:addons') ?? null)
   usePageReady(addons !== null)
   const [url, setUrl] = useState('')
+  const [installKey, setInstallKey] = useState('')
   const [installing, setInstalling] = useState(false)
   const [message, setMessage] = useState(null) // { error?, text }
 
