@@ -86,6 +86,26 @@ export function focusRow(lines, t) {
 }
 
 /**
+ * The visual focus must remain on the older lead until whichever vocal lane
+ * finishes last (lead words OR attached independent backing words). A newer
+ * lead can start during that window; it is still painted, but the old lead
+ * and its backing singer retain their shared focused row until completion.
+ *
+ * A plain LRC line with only a start timestamp has no known end and follows
+ * the traditional newest-start behavior, including the optional lead-ahead.
+ */
+export function focusRowUntilVocalsFinish(lines, t, leadAhead = 0) {
+  const latest = focusRow(lines, t + leadAhead)
+  if (latest < 0) return latest
+  for (let i = 0; i < latest; i++) {
+    const line = lines[i]
+    if (!line || line.gap || !Number.isFinite(line.time) || line.time > t) continue
+    if (knowsEnd(line) && lineEndOf(line) > t) return i
+  }
+  return latest
+}
+
+/**
  * Every line that needs painting this frame: the focused line, plus any
  * earlier line still being sung (overlapping vocals, a backing line that runs
  * past the next line's start), plus the short settle after each ends.
