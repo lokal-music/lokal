@@ -60,7 +60,7 @@ export default function StreamArtwork({ track, src, fallback, ...props }) {
         // A recording can have different featured-artist/title credits in
         // Amazon and the public catalogues. An exact album match is a safer
         // second independent source than an arbitrary song thumbnail.
-        if (preferIndependent && track.album) {
+        if (track.album) {
           const [album] = await api.discoveryArtwork([{
             ...request, type: 'album', title: track.album,
             artist: track.album_artist || track.artist,
