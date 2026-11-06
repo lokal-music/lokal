@@ -27,7 +27,7 @@ const manifest = { id: 'diagnostic-lastwave', name: 'LastWave', version: '1', re
 test('LastWave search diagnostics expose response shape and artwork count, never tokens or queries', async () => {
   const db = fixtureDb()
   const { events, onDiagnostic } = diagnostic()
-  const fetchImpl = async url => url.endsWith('/manifest.json') ? json(manifest) : json({
+  const fetchImpl = async url => url.includes('/manifest.json') ? json(manifest) : json({
     data: { tracks: [
       { id: 'private-song-id', title: 'Private search text', artist: 'Artist', artworkURL: 'https://cdn.example/signed-cover.jpg?token=do-not-log' },
       { id: 'another-private-id', title: 'Another', artist: 'Artist' },
@@ -48,7 +48,7 @@ test('LastWave search diagnostics expose response shape and artwork count, never
 test('LastWave stream diagnostics distinguish endpoint, nested payload and transport', async () => {
   const db = fixtureDb()
   const { events, onDiagnostic } = diagnostic()
-  const fetchImpl = async url => url.endsWith('/manifest.json') ? json(manifest) : json({
+  const fetchImpl = async url => url.includes('/manifest.json') ? json(manifest) : json({
     data: { stream: { streamURL: 'https://cdn.example/media/recording.flac?sig=private', format: 'flac' } },
   })
   const addon = await addons.install(db, base + '/manifest.json', { fetchImpl })
