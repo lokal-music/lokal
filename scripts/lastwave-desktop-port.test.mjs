@@ -273,3 +273,37 @@ test('Explicit add-on playback quality bypasses a search-inline recording', asyn
   assert.equal(resolved,1)
   assert.equal(stream.url,direct)
 })
+
+test('LastWave search preserves the reported resolution and usable cover aliases', async () => {
+  const database = fixtureDb()
+  const fetchImpl = async url => url.includes('/manifest.json')
+    ? json({ id: 'lastwave-resolution-fixture', name: 'LastWave', version: '1', resources: ['search', 'stream'] })
+    : json({ tracks: [
+      {
+        id: 'recording-24-44', title: 'Recorded song', artist: 'Example Artist',
+        artworkURL: 'not-a-web-url', albumArtworkURL: 'https://images.example/cover.jpg',
+        format: 'flac', quality: 'LOSSLESS', bitDepth: 24, sampleRate: 44.1,
+      },
+      {
+        id: 'recording-16-48', title: 'Second song', artist: 'Example Artist',
+        format: 'FLAC', metadata: { bitsPerSample: 16, sampling_rate: '48 kHz' },
+      },
+      {
+        id: 'unknown-resolution', title: 'Third song', artist: 'Example Artist',
+        format: 'flac',
+      },
+    ] })
+  const addon = await addons.install(database, base + '/manifest.json', { fetchImpl })
+  const tracks = await addons.search(database, addon.key, 'Recorded song', { fetchImpl })
+  assert.equal(tracks[0].thumbnail, 'https://images.example/cover.jpg')
+  assert.equal(tracks[0].format, 'flac')
+  assert.equal(tracks[0].quality, 'LOSSLESS')
+  assert.equal(tracks[0].bit_depth, 24)
+  assert.equal(tracks[0].sample_rate, 44100)
+  assert.equal(tracks[1].bit_depth, 16)
+  assert.equal(tracks[1].sample_rate, 48000)
+  assert.equal(tracks[2].quality, 'flac')
+  assert.equal(tracks[2].bit_depth, null)
+  assert.equal(tracks[2].sample_rate, null)
+})
+
