@@ -452,6 +452,7 @@ export const api = {
   // A misspelt search's correction: { corrected, source } (corrected null when none).
   searchSpelling: (q) => isE() ? el().searchSpelling(q) : apiFetch(`/online/spelling?q=${encodeURIComponent(q)}`),
   discoveryArtwork: items => isE() ? el().discoveryArtwork(items) : apiFetch('/online/artwork', { method: 'POST', body: { items } }),
+  repairOnlineArtwork: (trackId, previous, image) => isE() ? el().repairOnlineArtwork(trackId, previous, image) : Promise.resolve(false),
   discoveryCatalogue: options => options.source === 'youtube'
     ? (isE() ? el().youtubeCatalogue(options) : apiFetch('/online/catalogue', { method: 'POST', body: options }))
     : (isE() ? el().lastfmCatalogue(options) : apiFetch('/lastfm/catalogue', { method: 'POST', body: options })),
