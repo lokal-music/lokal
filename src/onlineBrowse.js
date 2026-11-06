@@ -312,14 +312,41 @@ export function mergeWithLibrary(onlineTracks = [], libraryTracks = []) {
 // Which albums and artists are shown with their online songs (the "Full album
 // online" / "More online" switches), remembered on this computer.
 const CONNECTED_KEY = 'lokal-online-connected'
+const ONLINE_DEFAULT_KEY = 'lokal-online-pages-default'
+const PAGE_MODES_KEY = 'lokal-online-page-mode-overrides'
+
+// This controls the *initial* mode of library album and artist pages. A page
+// explicitly switched by the user keeps its own preference.
+export function onlineByDefault() {
+  try { return localStorage.getItem(ONLINE_DEFAULT_KEY) !== '0' } catch { return true }
+}
+export function setOnlineByDefault(on) {
+  try { localStorage.setItem(ONLINE_DEFAULT_KEY, on ? '1' : '0') } catch {}
+}
 function connectedSet() {
   try { return new Set(JSON.parse(localStorage.getItem(CONNECTED_KEY) || '[]')) } catch { return new Set() }
 }
+function pageModes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PAGE_MODES_KEY) || '{}')
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+  } catch { return {} }
+}
 export function isConnected(key) {
-  return !!key && connectedSet().has(key)
+  if (!key) return false
+  const modes = pageModes()
+  if (Object.prototype.hasOwnProperty.call(modes, key)) return modes[key] === true
+  // Pre-existing positive page choices still work. Previously unopened pages
+  // (and pages without an explicit choice) inherit the global default.
+  return connectedSet().has(key) || onlineByDefault()
 }
 export function setConnected(key, on) {
   if (!key) return
+  const modes = pageModes()
+  // Reinsert the key so the most recently changed pages survive the cap.
+  delete modes[key]
+  modes[key] = !!on
+  try { localStorage.setItem(PAGE_MODES_KEY, JSON.stringify(Object.fromEntries(Object.entries(modes).slice(-500)))) } catch {}
   const set = connectedSet()
   if (on) set.add(key)
   else set.delete(key)
