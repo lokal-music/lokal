@@ -61,6 +61,12 @@ const catalogueCache = new Map() // `${key}\n${path}` -> { at, value }
 const streamCache = new Map() // `${key}\n${id}` -> stream
 const resolving = new Map()
 
+// Diagnostics are opt-in per request and intentionally never carry track IDs,
+// add-on URLs, signed parameters, content keys, or JSON response bodies.
+function report(onDiagnostic, event, details = {}) {
+  try { onDiagnostic?.({ event, ...details }) } catch { /* Logging must never break playback. */ }
+}
+
 /** Short stable key for an addon (from its manifest id), used in track ids and URLs. */
 function addonKey(manifestId) {
   return crypto.createHash('sha1').update(String(manifestId)).digest('hex').slice(0, 10)
@@ -104,7 +110,7 @@ const REDIRECT = new Set([301, 302, 303, 307, 308])
  * redirect can't lead to plain http on the internet (or anything else the
  * addon URL itself couldn't be).
  */
-async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept: 'application/json' }, addonIntent = null, signingKey = '' } = {}) {
+async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept: 'application/json' }, addonIntent = null, signingKey = '', onDiagnostic } = {}) {
   let current = checkUrl(url)
   const originalOrigin = current.origin
   for (let hop = 0; ; hop++) {
@@ -113,6 +119,7 @@ async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept
     const signature = current.origin === originalOrigin
       ? headersForSignedAddon(current.toString(), { intent: addonIntent, signingKey }) : {}
     const res = await fetchImpl(current.toString(), { headers: { 'User-Agent': USER_AGENT, ...headers, ...signature }, redirect: 'manual', signal })
+    report(onDiagnostic, 'addon-http-status', { status: res.status, hop })
     if (!REDIRECT.has(res.status)) return res
     const location = res.headers?.get?.('location')
     try { await res.body?.cancel?.() } catch {}
@@ -125,12 +132,13 @@ async function fetchChecked(url, { fetchImpl = fetch, signal, headers = { Accept
 }
 
 /** GET a JSON document from an addon, with a timeout and a size limit. */
-async function getJson(url, { timeoutMs, fetchImpl = fetch, addonIntent = null, signingKey = '' } = {}) {
+async function getJson(url, { timeoutMs, fetchImpl = fetch, addonIntent = null, signingKey = '', onDiagnostic } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs || 10000)
   try {
-    const res = await fetchChecked(url, { fetchImpl, signal: controller.signal, addonIntent, signingKey })
+    const res = await fetchChecked(url, { fetchImpl, signal: controller.signal, addonIntent, signingKey, onDiagnostic })
     const text = await res.text()
+    report(onDiagnostic, 'addon-json-body', { status: res.status, bytes: Buffer.byteLength(text), json: /^\\s*[\\[{]/.test(text) })
     if (text.length > MAX_BYTES) throw new Error('The addon sent too much data.')
     let json = null
     try { json = JSON.parse(text) } catch {}
@@ -371,17 +379,26 @@ function trackOf(t, provider) {
 }
 
 /** Tracks from an addon's /search. */
-async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEOUT_MS.search } = {}) {
+async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEOUT_MS.search, onDiagnostic } = {}) {
   const addon = findByKey(db, key)
   if (!addon || addon.enabled === false) throw new Error('This addon is not installed or is turned off.')
   const q = String(query || '').trim()
   if (q.length < 2) return []
   const cacheKey = `${key}\n${q.toLowerCase()}`
   const cached = searchCache.get(cacheKey)
-  if (cached && Date.now() - cached.at < SEARCH_TTL_MS) return cached.results.slice(0, limit)
-  const json = await getJson(endpoint(addon, '/search', { q }), { timeoutMs, fetchImpl, addonIntent: 'stream', signingKey: addon.signingKey || '' })
+  if (cached && Date.now() - cached.at < SEARCH_TTL_MS) {
+    report(onDiagnostic, 'search-cache-hit', { count: cached.results.length })
+    return cached.results.slice(0, limit)
+  }
+  const json = await getJson(endpoint(addon, '/search', { q }), { timeoutMs, fetchImpl, addonIntent: 'stream', signingKey: addon.signingKey || '', onDiagnostic })
   const provider = providerFor(key)
   const rows = [json.tracks, json.data?.tracks, json.results, json.items].find(Array.isArray) || []
+  report(onDiagnostic, 'search-payload', {
+    shape: Array.isArray(json.tracks) ? 'tracks' : Array.isArray(json.data?.tracks) ? 'data.tracks'
+      : Array.isArray(json.results) ? 'results' : Array.isArray(json.items) ? 'items' : 'missing',
+    received: rows.length,
+    valid: rows.filter(t => t && t.id != null && t.title).length,
+  })
   const results = rows
     .filter(t => t && t.id != null && t.title)
     .map(t => {
@@ -404,6 +421,7 @@ async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEO
     })
   if (searchCache.size > 100) searchCache.delete(searchCache.keys().next().value)
   searchCache.set(cacheKey, { at: Date.now(), results })
+  report(onDiagnostic, 'search-normalized', { count: results.length, withArtwork: results.filter(t => !!t.thumbnail).length })
   return results.slice(0, limit)
 }
 
@@ -500,7 +518,7 @@ function streamFormat(json, url) {
 }
 
 /** The audio URL for an addon track (from its /stream), cached until it expires. */
-async function resolveStream(db, key, id, { fetchImpl, force = false, download = false, timeoutMs = TIMEOUT_MS.stream } = {}) {
+async function resolveStream(db, key, id, { fetchImpl, force = false, download = false, timeoutMs = TIMEOUT_MS.stream, onDiagnostic } = {}) {
   const addon = findByKey(db, key)
   if (!addon || addon.enabled === false) throw new Error('This addon is not installed or is turned off.')
   // Playback and download use separate intent-scoped caches.
@@ -509,8 +527,14 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
   // A deferred shared-cache trim may have removed a previously staged file.
   // Never return a dead file reference from the TTL cache.
   if (!force && cached && cached.expiresAt > Date.now() &&
-      (!cached.file || fs.existsSync(cached.file))) return cached
-  if (!force && resolving.has(cacheKey)) return resolving.get(cacheKey)
+      (!cached.file || fs.existsSync(cached.file))) {
+    report(onDiagnostic, 'resolve-cache-hit', { transport: cached.type || 'url' })
+    return cached
+  }
+  if (!force && resolving.has(cacheKey)) {
+    report(onDiagnostic, 'resolve-inflight')
+    return resolving.get(cacheKey)
+  }
   // LastWave may wrap the real audio inside "stream" and/or "data".
   // Its default format=manifest="dash" is not proof that the returned URL
   // is an MPD. Prefer actual audio bytes, then a *real* DASH plan.
@@ -524,6 +548,8 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     const qualitySelected = Object.keys(addon.settings || {}).some(name => /quality|format|codec|bitrate/i.test(name))
     const useInline = !force && !download && !qualitySelected && inline &&
       Date.now() - inline.at < SEARCH_TTL_MS
+    report(onDiagnostic, 'resolve-start', { source: useInline ? 'search-inline' : 'stream-endpoint', download: !!download, forced: !!force, qualitySelected })
+    options.onDiagnostic = onDiagnostic
     if (useInline) raw = inline.value
     else try { raw = await getJson(url, options) }
     catch (error) {
@@ -550,17 +576,25 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     }).filter(Boolean).filter(value => !ADAPTIVE.test(value))
     const explicit = progressive.find(value => /\.(?:flac|mp3|m4a|mp4|ogg|opus|wav|aac|webm)(?:[?#]|$)/i.test(value))
     const manifest = explicit || json.hybrid ? null : extractManifest(json, addon.baseUrl)
+    report(onDiagnostic, 'stream-payload', {
+      nestedData: !!raw.data, nestedStream: !!raw.stream || !!raw.data?.stream,
+      candidateUrls: candidates.length, progressiveUrls: progressive.length,
+      explicitAudio: !!explicit, hybrid: !!json.hybrid,
+      dash: !!manifest, hasQuality: !!json.quality,
+    })
     let stream
     if (json.hybrid) {
+      report(onDiagnostic, 'transport-selected', { transport: 'hybrid' })
       const file = await stageHybrid(json.hybrid, addon.baseUrl, {
-        fetchImpl, key: cacheKey,
+        fetchImpl, key: cacheKey, onDiagnostic,
       })
       stream = { type: 'file', file, url: null, headers: {},
         mime: 'audio/mp4', format: 'm4a', quality: json.quality || null,
         expiresAt: Date.now() + STREAM_TTL_MS }
     } else if (manifest) {
+      report(onDiagnostic, 'transport-selected', { transport: 'dash', inlineManifest: !!manifest.xml })
       const file = await stageAddonDash(manifest, addon.baseUrl, {
-        fetchImpl, key: cacheKey,
+        fetchImpl, key: cacheKey, onDiagnostic,
       })
       stream = { type: 'file', file, url: null, headers: {},
         mime: 'audio/mp4', format: 'm4a', quality: json.quality || null,
@@ -576,6 +610,7 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
         }
       }
       const format = streamFormat(json, direct)
+      report(onDiagnostic, 'transport-selected', { transport: 'url', format: format || 'unknown' })
       stream = { url: direct, headers: {}, mime: MIME[format] || 'audio/*',
         expiresAt: Math.max(Date.now() + 30000,
           Number(json.expiresAt) > 0 ? Number(json.expiresAt) * (Number(json.expiresAt) < 1e12 ? 1000 : 1) - 60000 : Date.now() + STREAM_TTL_MS),
@@ -583,8 +618,12 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     }
     if (streamCache.size > 200) streamCache.delete(streamCache.keys().next().value)
     streamCache.set(cacheKey, stream)
+    report(onDiagnostic, 'resolve-complete', { transport: stream.type || 'url', format: stream.format || 'unknown' })
     return stream
-  })().finally(() => resolving.delete(cacheKey))
+  })().catch(error => {
+    report(onDiagnostic, 'resolve-failed', { status: Number(error?.status) || null, name: error?.name || 'Error' })
+    throw error
+  }).finally(() => resolving.delete(cacheKey))
   resolving.set(cacheKey, job)
   return job
 }
