@@ -181,6 +181,12 @@ export const api = {
     if (isE()) return `file://${album.artwork_path}`
     return album.artwork_track_id ? `${BASE}/artwork/${encodeURIComponent(album.artwork_track_id)}` : null
   },
+  // Album grids/heroes need the original picture, not the 150px cached thumbnail.
+  // The selected album artwork track exists for previously indexed libraries too;
+  // use the same trusted full-cover protocol as the player, without a rescan.
+  albumFullArtURL: (album) => album?.artwork_track_id
+    ? api.fullArtworkURL(album.artwork_track_id)
+    : api.albumArtURL(album),
   playlistCoverURL: (id) => `${BASE}/playlists/${encodeURIComponent(id)}/cover`,
   streamURL: (t) => `${BASE}/stream/${encodeURIComponent(t.id)}`,
   avatarURL: (id) => `${BASE}/avatar/${id}`,
