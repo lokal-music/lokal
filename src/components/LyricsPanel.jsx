@@ -14,7 +14,7 @@ import { isStationTrack, lyricsTrackFor, stationClockUnknown, stationSongTime } 
 import { usePlayerStore } from '../store/player'
 import { cacheLyrics, hasCachedLyrics, peekLyrics } from '../lyrics/lyricsCache'
 import {
-  canGrow, growLetters, unitProgress, unitLift, activeRows, focusRow, stillSinging, lineEndOf, groupUnits, withOutroBreak,
+  canGrow, growLetters, unitProgress, unitLift, activeRows, focusRowUntilVocalsFinish, stillSinging, lineEndOf, groupUnits, withOutroBreak,
 } from '../lyrics/timing'
 
 // ---------------------------------------------------------------------------
@@ -573,7 +573,7 @@ export default function LyricsPanel({
     if (!lines.length) return
     if (synced) {
       const t = now()
-      const focus = focusRow(lines, t + FOCUS_LEAD_S)
+      const focus = focusRowUntilVocalsFinish(lines, t, FOCUS_LEAD_S)
       setFocusIdx(focus)
       setLiveKey(stillSinging(lines, t, focus).join(','))
       const bg = activeSupportingVocalIndex(lines, t)
