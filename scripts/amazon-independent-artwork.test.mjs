@@ -69,11 +69,24 @@ test('Promoting an independent cover does not trigger a second lookup that exclu
   const independent = 'https://catalogue.example/large.jpg'
   let count = 0
   const lookup = async () => { count++; return independent }
-  const first = await resolvePlayerArtwork(track, source, lookup, { preferIndependent: true })
-  // Browser Image is absent in Node. The unit test explicitly stubs image
-  // decoding using the pure selector; the source policy wiring is asserted below.
-  assert.equal(first, null)
-  assert.equal(count, 1)
+  const oldImage = globalThis.Image
+  globalThis.Image = class {
+    set src(value) {
+      this.naturalWidth = 1200
+      this.naturalHeight = 1200
+      queueMicrotask(() => this.onload?.())
+    }
+  }
+  try {
+    const first = await resolvePlayerArtwork(track, source, lookup, { preferIndependent: true })
+    assert.equal(first, independent)
+    const afterPromotion = await resolvePlayerArtwork(track, independent, lookup, { preferIndependent: true })
+    assert.equal(afterPromotion, independent)
+    assert.equal(count, 1, 'an independently recovered cover must not be excluded and replaced again')
+  } finally {
+    if (oldImage === undefined) delete globalThis.Image
+    else globalThis.Image = oldImage
+  }
 })
 
 test('Amazon full player resolves source names and sets the independent-first policy', () => {
