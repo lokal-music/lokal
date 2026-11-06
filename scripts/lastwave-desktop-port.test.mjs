@@ -221,6 +221,7 @@ test('Explicit add-on playback quality bypasses a search-inline recording', asyn
     return json({url:direct,format:'flac'})
   }
   const addon=await addons.install(database,base+'/manifest.json',{fetchImpl})
+  addons.setSettings(database,addon.key,{quality:'LOSSLESS'})
   await addons.search(database,addon.key,'Quality song',{fetchImpl})
   const stream=await addons.resolveStream(database,addon.key,'quality-track',{fetchImpl})
   assert.equal(resolved,1)
