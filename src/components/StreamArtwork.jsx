@@ -56,7 +56,18 @@ export default function StreamArtwork({ track, src, fallback, ...props }) {
       const preferIndependent = isAmazonMusicAddonLabel(names?.[ref.provider])
       const url = await resolvePlayerArtwork(track, src, async request => {
         const [result] = await api.discoveryArtwork([request])
-        return result?.image || ''
+        if (result?.image) return result.image
+        // A recording can have different featured-artist/title credits in
+        // Amazon and the public catalogues. An exact album match is a safer
+        // second independent source than an arbitrary song thumbnail.
+        if (preferIndependent && track.album) {
+          const [album] = await api.discoveryArtwork([{
+            ...request, type: 'album', title: track.album,
+            artist: track.album_artist || track.artist,
+          }])
+          return album?.image || ''
+        }
+        return ''
       }, { preferIndependent })
       if (!active || !url || url === src) return
       setSelected({ key, url })
