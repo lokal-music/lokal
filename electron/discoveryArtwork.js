@@ -72,13 +72,15 @@ function createArtworkResolver({ getDB = () => null, isElectron = false, fetchIm
     return ''
   }
   const resolve = async raw => {
-    const item = { type: ['artist', 'album', 'track'].includes(raw?.type) ? raw.type : 'track', title: String(raw?.title || '').slice(0, 300), artist: String(raw?.artist || '').slice(0, 300), image: raw?.image, exclude: raw?.exclude }
+    const item = { type: ['artist', 'album', 'track'].includes(raw?.type) ? raw.type : 'track', title: String(raw?.title || '').slice(0, 300), artist: String(raw?.artist || '').slice(0, 300), image: raw?.image, exclude: raw?.exclude, remoteOnly: raw?.remoteOnly === true }
     item.exclude = imageUrl(item.exclude) || item.exclude
     if (!item.artist || (item.type !== 'artist' && !item.title)) return { image: '' }
     if (imageUrl(item.image) && imageUrl(item.image) !== item.exclude) return { image: imageUrl(item.image) }
-    const localImage = local(item)
+    // Player image-quality upgrades must bypass the local ghost's existing
+    // low-resolution thumbnail. Keep ordinary search artwork local-first.
+    const localImage = item.remoteOnly ? '' : local(item)
     if (localImage && localImage !== item.exclude) return { image: localImage }
-    const id = `${item.type}\0${key(item.artist)}\0${key(item.title)}\0${item.exclude || ''}`
+    const id = `${item.remoteOnly ? 'remote:' : ''}${item.type}\0${key(item.artist)}\0${key(item.title)}\0${item.exclude || ''}`
     const cached = cache.get(id)
     if (cached && Date.now() - cached.at < (cached.image ? 86400000 : 300000)) return { image: cached.image }
     if (!pending.has(id)) {
