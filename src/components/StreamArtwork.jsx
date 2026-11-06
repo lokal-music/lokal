@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { usePlayerStore } from '../store/player'
 import { api } from '../api'
-import { isStreamed } from '../onlineTracks'
+import { isStreamed, isAddonProvider, streamRef } from '../onlineTracks'
 import DiscoveryImage from './DiscoveryImage'
 import { resolvePlayerArtwork } from '../playerArtworkResolution.mjs'
 
@@ -45,7 +45,7 @@ export default function StreamArtwork({ track, src, fallback, ...props }) {
   useEffect(() => {
     let active = true
     setSelected({ key: '', url: '' })
-    if (!isStreamed(track)) return () => { active = false }
+    if (!isAddonProvider(streamRef(track)?.provider)) return () => { active = false }
     // Search is allowed to show a cheap thumbnail immediately. Resolve a
     // verified large image separately, as mobile does; do not block playback.
     void resolvePlayerArtwork(track, src, async request => {
