@@ -30,6 +30,30 @@ test('Appearance setting is persisted and refreshes the Home view', () => {
   assert.ok(appearance.includes("window.addEventListener('lokal:settings-saved', refresh)"))
 })
 
+test('Home greeting and subheader are optional and shared across Home tabs', () => {
+  assert.match(appearance, /'home_greeting'\]/, 'missing values default to on in appearance flags')
+  assert.ok(appearance.includes("s[key] !== '0'"), 'only an explicit off disables the greeting')
+  assert.ok(home.includes("useAppearanceFlag('home_greeting')"), 'Home subscribes to the saved appearance flag')
+  assert.ok(home.includes('showHomeGreeting && <div data-home-greeting>'),
+    'hide the entire greeting block, not just its text')
+  assert.ok(home.includes('personalizedHomeMessages(localHistory, { hour })'),
+    'keep the existing personalized headline and subheader when enabled')
+  assert.equal((home.match(/data-home-greeting/g) || []).length, 1,
+    'one shared header must serve Local, Discovery, Flow, Releases and History')
+  assert.ok(home.includes("{[['home', 'Local'], ['discovery', 'Discovery'], ['flow', 'Flow']"),
+    'the tab switcher must remain outside the optional header')
+})
+
+test('Appearance -> Home persists greeting visibility with the existing settings API', () => {
+  assert.ok(settings.includes('label={t("Home greeting and subheader")}'))
+  assert.ok(settings.includes('aria-pressed={settings.home_greeting !== \'0\'}'))
+  assert.ok(settings.includes("set('home_greeting', settings.home_greeting === '0' ? '1' : '0')"))
+  assert.ok(settings.includes('queueSettings({ [k]: v })'),
+    'the visibility preference survives restart through the existing settings service')
+  assert.ok(appearance.includes("window.addEventListener('lokal:settings-saved', refresh)"),
+    'Home should refresh its appearance preference after saving without a restart')
+})
+
 test('classic fallback is original cylindrical carousel, not flattened Cover Flow', () => {
   for (const feature of [
     'const ARC = 0.27',
