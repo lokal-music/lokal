@@ -51,9 +51,9 @@ function fromYouTube(r) {
  * YouTube search through yt-dlp if YouTube Music can't be reached.
  * @param fallbackSearch (query) => Promise<results in the yt shape>, optional
  */
-async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, limit = 10, addonTimeoutMs } = {}) {
+async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, limit = 10, addonTimeoutMs, onDiagnostic } = {}) {
   const key = addons.keyOfProvider(provider)
-  if (key) return { results: await addons.search(db, key, query, { fetchImpl, limit: 20, timeoutMs: addonTimeoutMs }) }
+  if (key) return { results: await addons.search(db, key, query, { fetchImpl, limit: 20, timeoutMs: addonTimeoutMs, onDiagnostic }) }
   if (provider === 'sc') return { results: await sc.searchTracks(query, { ytdlp, limit }) }
   if (provider === 'mono') return { results: await mono.searchTracks(query, { limit, fetchImpl }) }
   try {
@@ -70,7 +70,7 @@ async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, l
 function resolveStream(provider, id, opts = {}) {
   if (!validId(provider, id)) return Promise.reject(new Error('Unknown online song'))
   const key = addons.keyOfProvider(provider)
-  if (key) return addons.resolveStream(opts.db, key, id, { force: opts.force, download: opts.download, fetchImpl: opts.addonFetch, signal: opts.signal, timeoutMs: opts.addonTimeoutMs })
+  if (key) return addons.resolveStream(opts.db, key, id, { force: opts.force, download: opts.download, fetchImpl: opts.addonFetch, signal: opts.signal, timeoutMs: opts.addonTimeoutMs, onDiagnostic: opts.onDiagnostic })
   if (provider === 'mono') return mono.resolveStream(id)
   return provider === 'sc' ? sc.resolveStream(id, opts) : yt.resolveStream(id, opts)
 }
