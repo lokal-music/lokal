@@ -54,6 +54,9 @@ let USER_AGENT = 'Lokal'
 try { USER_AGENT = `Lokal/${require('../../package.json').version}` } catch {}
 
 const searchCache = new Map() // `${key}\n${query}` -> { at, results }
+// A search result may already contain the selected full recording URL. Keep
+// it inside the main process (never expose signed media URLs to the renderer).
+const inlineStreamCache = new Map() // `${key}\n${id}` -> { at, value }
 const catalogueCache = new Map() // `${key}\n${path}` -> { at, value }
 const streamCache = new Map() // `${key}\n${id}` -> stream
 const resolving = new Map()
@@ -164,6 +167,7 @@ function readAll(db) {
 function writeAll(db, list) {
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(SETTINGS_KEY, JSON.stringify(list))
   searchCache.clear()
+  inlineStreamCache.clear()
   streamCache.clear()
 }
 
@@ -360,7 +364,7 @@ function trackOf(t, provider) {
     isrc: t.isrc ? String(t.isrc).slice(0, 20) : null,
     genre: typeof t.genre === 'string' && t.genre.trim() ? t.genre.trim().slice(0, 100) : null,
     duration: durationOf(t),
-    thumbnail: httpsImage(t.artworkURL || t.artwork),
+    thumbnail: httpsImage(t.artworkURL || t.albumArtworkURL || t.artworkUrl || t.albumArtworkUrl || t.coverUrl || t.thumbnailUrl || t.artwork || t.thumbnail),
     quality: t.format ? String(t.format).slice(0, 40) : null,
     kind: 'song',
   }
@@ -381,7 +385,22 @@ async function search(db, key, query, { fetchImpl, limit = 20, timeoutMs = TIMEO
   const results = rows
     .filter(t => t && t.id != null && t.title)
     .map(t => {
-      return trackOf(t, provider)
+      const track = trackOf(t, provider)
+      // Mobile can play an already resolved streamURL from search. Cache only
+      // obvious progressive media: opaque endpoints may return JSON or an MPD
+      // and must still be resolved through /stream rather than sent to audio.
+      if (typeof t.streamURL === 'string' && t.streamURL.length < 8192 &&
+          !t.preview && !t.isPreview && !t.previewOnly && !t.isSample &&
+          t.encrypted !== true && !t.drm && !Object.keys(t.headers || {}).length) {
+        try {
+          const direct = new URL(require('./addonDash').guardMediaUrl(t.streamURL, addon.baseUrl))
+          if (/\.(?:flac|mp3|m4a|mp4|ogg|opus|wav|aac|webm)$/i.test(direct.pathname)) {
+            if (inlineStreamCache.size >= 200) inlineStreamCache.delete(inlineStreamCache.keys().next().value)
+            inlineStreamCache.set(`${key}\n${track.id}`, { at: Date.now(), value: { ...t, url: direct.toString() } })
+          }
+        } catch { /* The normal /stream path remains available. */ }
+      }
+      return track
     })
   if (searchCache.size > 100) searchCache.delete(searchCache.keys().next().value)
   searchCache.set(cacheKey, { at: Date.now(), results })
@@ -499,7 +518,14 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     const url = endpoint(addon, `/stream/${encodeURIComponent(id)}`)
     const options = { timeoutMs, fetchImpl, addonIntent: download ? 'download' : 'stream', signingKey: addon.signingKey || '' }
     let raw
-    try { raw = await getJson(url, options) }
+    const inline = inlineStreamCache.get(`${key}\n${id}`)
+    // An explicit quality setting must be resolved by the add-on, not by an
+    // inline URL that may point to a different tier.
+    const qualitySelected = Object.keys(addon.settings || {}).some(name => /quality|format|codec|bitrate/i.test(name))
+    const useInline = !force && !download && !qualitySelected && inline &&
+      Date.now() - inline.at < SEARCH_TTL_MS
+    if (useInline) raw = inline.value
+    else try { raw = await getJson(url, options) }
     catch (error) {
       // Mobile retries transient stream minting errors once, preserving the
       // exact signing/intent scope; never retry auth or entitlement failures.
@@ -517,7 +543,7 @@ async function resolveStream(db, key, id, { fetchImpl, force = false, download =
     }
     // Hybrid plans contain the content key and CDN ranges; keep them in the
     // Electron process, never forward them to the renderer or playback URL.
-    const candidates = ['url', 'directUrl', 'streamUrl', 'downloadUrl', 'mediaUrl']
+    const candidates = ['url', 'directUrl', 'streamURL', 'streamUrl', 'downloadURL', 'downloadUrl', 'mediaURL', 'mediaUrl']
       .map(name => json[name]).filter(value => typeof value === 'string' && value.trim() && !value.startsWith('data:'))
     const progressive = candidates.map(value => {
       try { return checkUrl(value).toString() } catch { return null }

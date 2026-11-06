@@ -54,7 +54,8 @@ function guardMediaUrl(value, addonBase) {
 function extractManifest(response, addonBase) {
   const source = response && typeof response === 'object' ? response : {}
   for (const item of [source.manifestXml, source.dataUrl, source.url,
-    source.directUrl, source.streamUrl, source.downloadUrl, source.mediaUrl]) {
+    source.directUrl, source.streamURL, source.streamUrl, source.downloadURL,
+    source.downloadUrl, source.mediaURL, source.mediaUrl]) {
     if (typeof item !== 'string' || !item.trim()) continue
     if (/^data:application\/dash\+xml[;,]/i.test(item)) {
       if (item.length > MAX_MPD_BYTES * 2) throw new Error('DASH manifest is too large.')

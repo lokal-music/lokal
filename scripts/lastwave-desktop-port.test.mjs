@@ -47,6 +47,7 @@ test('LastWave nested stream accepts progressive FLAC even with default DASH lab
 test('inline/remote DASH detection ignores bare default labels', () => {
   assert.equal(extractManifest({format:'dash',manifest:'dash',url:direct},base),null)
   assert.equal(extractManifest({manifestXml:sampleMpd,format:'dash'},base).xml,sampleMpd)
+  assert.equal(extractManifest({streamURL:'https://cdn.example/manifest.mpd?sig=1'},base).url,'https://cdn.example/manifest.mpd?sig=1')
   assert.equal(extractManifest({dataUrl:'data:application/dash+xml;base64,'+Buffer.from(sampleMpd).toString('base64')},base).xml,sampleMpd)
   assert.ok(extractManifest({url:'https://cdn.example/manifest.mpd?sig=ok'},base).url)
   const parsed=parseStaticMpd(sampleMpd,base,base)
@@ -164,4 +165,65 @@ test('clear hybrid ranges are staged in byte order', async()=>{
     const file=await stageHybrid(value,base,{directory:dir,fetchImpl,key:'clear-test'})
     assert.equal((await readFile(file)).toString(),'INITONETWO!!')
   } finally {await rm(dir,{recursive:true,force:true})}
+})
+
+test('LastWave search artwork alias and inline streamURL match mobile playback', async () => {
+  const database=fixtureDb()
+  let resolved=0
+  const artwork='https://img.example/cover.jpg'
+  const fetchImpl=async url=>{
+    if(url.includes('/manifest.json'))return json({
+      id:'lastwave-inline-url',name:'LastWave',version:'1',
+      resources:['search','stream'],
+    })
+    if(url.includes('/search'))return json({tracks:[{
+      id:'inline-track',title:'Inline song',artist:'The Artist',
+      albumArtworkURL:artwork,streamURL:direct,format:'dash',manifest:'dash',
+      duration:193,
+    }]})
+    resolved++
+    throw new Error('A valid search-inline recording should not call /stream')
+  }
+  const addon=await addons.install(database,base+'/manifest.json',{fetchImpl})
+  const tracks=await addons.search(database,addon.key,'Inline song',{fetchImpl})
+  assert.equal(tracks[0].thumbnail,artwork)
+  const stream=await addons.resolveStream(database,addon.key,'inline-track',{fetchImpl})
+  assert.equal(stream.url,direct)
+  assert.equal(stream.mime,'audio/flac')
+  assert.equal(resolved,0)
+})
+
+test('LastWave uppercase streamURL in nested /stream payload resolves for playback', async () => {
+  const database=fixtureDb()
+  const fetchImpl=async url=>url.includes('/manifest.json')
+    ? json({id:'lastwave-streamurl-alias',name:'LastWave',version:'1',resources:['search','stream']})
+    : json({data:{streamURL:direct,format:'dash',manifest:'dash'}})
+  const addon=await addons.install(database,base+'/manifest.json',{fetchImpl})
+  const stream=await addons.resolveStream(database,addon.key,'uppercase-link',{fetchImpl})
+  assert.equal(stream.url,direct)
+  assert.equal(stream.mime,'audio/flac')
+})
+
+test('Explicit add-on playback quality bypasses a search-inline recording', async () => {
+  const database=fixtureDb()
+  let resolved=0
+  const fetchImpl=async url=>{
+    if(url.includes('/manifest.json'))return json({
+      id:'lastwave-quality-selection',name:'LastWave',version:'1',
+      resources:['search','stream'],
+      settings:[{key:'quality',type:'select',default:'LOSSLESS'}],
+    })
+    if(url.includes('/search'))return json({tracks:[{
+      id:'quality-track',title:'Quality song',artist:'Singer',
+      streamURL:'https://cdn.example/audio/default.mp3',
+    }]})
+    resolved++
+    return json({url:direct,format:'flac'})
+  }
+  const addon=await addons.install(database,base+'/manifest.json',{fetchImpl})
+  addons.setSettings(database,addon.key,{quality:'LOSSLESS'})
+  await addons.search(database,addon.key,'Quality song',{fetchImpl})
+  const stream=await addons.resolveStream(database,addon.key,'quality-track',{fetchImpl})
+  assert.equal(resolved,1)
+  assert.equal(stream.url,direct)
 })
