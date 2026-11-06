@@ -13,10 +13,12 @@ on:
       - 'electron/lyrics/service.js'
       - 'src/lyrics/supportingVocals.mjs'
       - 'src/components/LyricsPanel.jsx'
+      - 'src/lyrics/timing.js'
       - 'scripts/lastwave-desktop-port.test.mjs'
       - 'scripts/lastwave-hybrid-cenc.test.mjs'
       - 'scripts/staged-media-cache-trim.test.mjs'
       - 'scripts/desktop-background-lyrics-port.test.mjs'
+      - 'scripts/lyrics-focus-hold.test.mjs'
       - '.github/workflows/lastwave-background-lyrics-ci.yml'
   workflow_dispatch:
 
@@ -52,6 +54,7 @@ jobs:
             scripts/lastwave-hybrid-cenc.test.mjs \
             scripts/staged-media-cache-trim.test.mjs \
             scripts/desktop-background-lyrics-port.test.mjs \
+            scripts/lyrics-focus-hold.test.mjs \
             scripts/http-addon-signing.test.mjs \
             scripts/enhanced-lrc-background.test.mjs
       - name: Install frontend dependencies without running native postinstall
