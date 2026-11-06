@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - 'electron/online/addons.js'
+      - 'electron/online/sources.js'
+      - 'electron/ipc/online.js'
+      - 'src/api.js'
+      - 'src/pages/Albums.jsx'
       - 'electron/online/addonDash.js'
       - 'electron/online/addonHybrid.js'
       - 'electron/online/stagedMediaTrim.js'
@@ -15,6 +19,8 @@ on:
       - 'src/components/LyricsPanel.jsx'
       - 'src/lyrics/timing.js'
       - 'scripts/lastwave-desktop-port.test.mjs'
+      - 'scripts/lastwave-diagnostics.test.mjs'
+      - 'scripts/album-full-artwork.test.mjs'
       - 'scripts/lastwave-hybrid-cenc.test.mjs'
       - 'scripts/staged-media-cache-trim.test.mjs'
       - 'scripts/desktop-background-lyrics-port.test.mjs'
@@ -39,6 +45,8 @@ jobs:
       - name: Verify backend syntax
         run: |
           node --check electron/online/addons.js
+          node --check electron/online/sources.js
+          node --check electron/ipc/online.js
           node --check electron/online/addonDash.js
           node --check electron/online/addonHybrid.js
           node --check electron/online/stagedMediaTrim.js
@@ -51,6 +59,8 @@ jobs:
         run: |
           node --test \
             scripts/lastwave-desktop-port.test.mjs \
+            scripts/lastwave-diagnostics.test.mjs \
+            scripts/album-full-artwork.test.mjs \
             scripts/lastwave-hybrid-cenc.test.mjs \
             scripts/staged-media-cache-trim.test.mjs \
             scripts/desktop-background-lyrics-port.test.mjs \
