@@ -92,7 +92,8 @@ test('player metadata lookup bypasses local ghost thumbnail only when requested'
 test('fullscreen, mini-player and player bar all use the full-resolution artwork selector', () => {
   const streamArtwork = readFileSync(new URL('../src/components/StreamArtwork.jsx', import.meta.url), 'utf8')
   assert.match(streamArtwork, /resolvePlayerArtwork\(track, src/)
-  assert.match(streamArtwork, /isAddonProvider\(streamRef\(track\)\?\.provider\)/)
+  assert.match(streamArtwork, /const ref = streamRef\(track\)/)
+  assert.match(streamArtwork, /isAddonProvider\(ref\?\.provider\)/)
   assert.match(streamArtwork, /rememberRecoveredStreamArtwork\(track, image\)/)
   for (const path of ['PlayerBar', 'MiniPlayer', 'FullscreenPlayer']) {
     const source = readFileSync(new URL('../src/components/' + path + '.jsx', import.meta.url), 'utf8')
