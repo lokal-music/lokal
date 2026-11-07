@@ -1,0 +1,40 @@
+name: Phone copy recovery contracts
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'electron/link/**'
+      - 'electron/quality/**'
+      - 'electron/artistId.js'
+      - 'electron/ipc/scanner.js'
+      - 'electron/ipc/walkMusicFiles.js'
+      - 'electron/phoneUploadPaths.js'
+      - 'electron/storageLocations.js'
+      - 'scripts/phone-*.test.*'
+      - 'scripts/link-upload-match.test.mjs'
+      - 'scripts/support/phone-upload-*.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/phone-copy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run test:phone-copy
