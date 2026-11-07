@@ -29,7 +29,7 @@ test('Amazon always checks the independent catalogue FIRST, even when addon artw
   assert.equal(result, independent)
   assert.deepEqual(inspected, [independent], 'do not choose addon on URL size alone')
   assert.deepEqual(requested, [{
-    type: 'track', title: 'Song', artist: 'Artist', exclude: addon, remoteOnly: true,
+    type: 'track', title: 'Song', artist: 'Artist', exclude: addon, excludes: [addon], remoteOnly: true,
   }])
 })
 

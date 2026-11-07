@@ -4,7 +4,7 @@ import { artworkCandidates } from './artworkQuality.mjs'
 // not the dimensions requested in a CDN URL. A 200 response may contain a
 // tiny placeholder instead of the advertised 1200px image.
 export const PLAYER_ARTWORK_TARGET = 1000
-const MAX_LOOKUP_MS = 15000
+const MAX_LOOKUP_MS = 24000
 const PROBE_TIMEOUT_MS = 6000
 const cache = new Map()
 const independentAmazonArt = new Map()
@@ -64,28 +64,37 @@ export async function choosePlayerArtwork(src, { title, artist, resolveRemote, i
   }
   const lookupIndependent = async () => {
     if (!title || !artist || !resolveRemote || now() >= deadline) return false
-    // Amazon's addon artwork is a search thumbnail, not the full-player
-    // source. Always consult the independent catalogue even if the Amazon
-    // URL happens to load at a large requested size.
-    try {
-      const remote = await resolveRemote({ type: 'track', title, artist, exclude: src || '', remoteOnly: true })
-      if (!remote || remote === src || now() >= deadline) return false
-      const previous = best
-      best = null
-      await inspectCandidates(remote)
-      const independent = best
-      // Reject a tiny metadata placeholder. The addon remains a fallback if
-      // the independent catalogue cannot produce a usable image.
-      if (independent && (!preferIndependent || independent.side >= 300)) {
-        if (preferIndependent) onIndependentResolved?.(independent.url)
-        if (!preferIndependent && previous &&
-            (previous.side > independent.side || (previous.side === independent.side && previous.area >= independent.area))) {
+    // One catalogue URL returning a 404 or a tiny placeholder must not
+    // exhaust artwork recovery. Ask the same resolver for its next matching
+    // provider result, excluding every unsuccessful URL (Mobile parity).
+    const rejected = new Set(src ? [src] : [])
+    for (let attempt = 0; attempt < 3 && now() < deadline; attempt++) {
+      try {
+        const remote = await resolveRemote({
+          type: 'track', title, artist, exclude: src || '',
+          excludes: [...rejected], remoteOnly: true,
+        })
+        if (!remote || rejected.has(remote) || now() >= deadline) break
+        rejected.add(remote)
+        const previous = best
+        best = null
+        await inspectCandidates(remote)
+        const independent = best
+        // A failed candidate does not erase already decoded source artwork.
+        if (!independent || (preferIndependent && independent.side < 300)) {
           best = previous
+          continue
         }
+        if (!preferIndependent && previous &&
+          (previous.side > independent.side ||
+            (previous.side === independent.side && previous.area >= independent.area))) {
+          best = previous
+          continue
+        }
+        if (preferIndependent) onIndependentResolved?.(independent.url)
         return true
-      }
-      best = previous
-    } catch { /* Keep the best valid cover of the existing source. */ }
+      } catch { /* Try the next independent source or keep existing art. */ }
+    }
     return false
   }
 

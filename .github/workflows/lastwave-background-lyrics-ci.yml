@@ -11,6 +11,8 @@ on:
       - 'src/components/StreamArtwork.jsx'
       - 'src/playerArtworkResolution.mjs'
       - 'scripts/amazon-independent-artwork.test.mjs'
+      - 'electron/discoveryArtworkMatch.js'
+      - 'scripts/lastwave-desktop-artwork-parity.test.mjs'
       - 'electron/discoveryArtwork.js'
       - 'scripts/lastwave-full-resolution-artwork.test.mjs'
       - 'src/components/OnlineResults.jsx'
@@ -59,6 +61,8 @@ jobs:
         run: |
           node --check electron/online/addons.js
           node --check electron/online/sources.js
+          node --check electron/discoveryArtworkMatch.js
+          node --check electron/discoveryArtwork.js
           node --check electron/ipc/online.js
           node --check electron/online/addonDash.js
           node --check electron/online/addonHybrid.js
@@ -73,6 +77,8 @@ jobs:
           node --test \
             scripts/lastwave-desktop-port.test.mjs \
             scripts/lastwave-diagnostics.test.mjs \
+            scripts/lastwave-desktop-artwork-parity.test.mjs \
+            scripts/discovery-media.test.mjs \
             scripts/lastwave-full-resolution-artwork.test.mjs \
             scripts/amazon-independent-artwork.test.mjs \
             scripts/catalogue-quality.test.mjs \
