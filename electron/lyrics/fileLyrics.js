@@ -167,8 +167,12 @@ function lyricsFromMeta(meta) {
     if (tag.id === 'SYLT' && tag.value && !sylts.includes(tag.value)) sylts.push(tag.value)
   }
   const clean = texts.map(t => fixMojibake(t).replace(/\r\n?/g, '\n').trim()).filter(Boolean)
-  const syncedText = clean.find(isSyncedText)
-  if (syncedText) return syncedText
+  // A word-timed native tag may include separately timed [bg:] vocals while
+  // the flattened common tag contains only the lead. Prefer the complete one.
+  const bgCount = text => (text.match(/^\s*\[bg\s*:/gim) || []).length
+  const synced = clean.filter(isSyncedText)
+  if (synced.length) return synced.reduce((best, text) =>
+    bgCount(text) > bgCount(best) ? text : best)
   for (const s of sylts) {
     const lrc = syltToLrc(s)
     if (lrc) return lrc

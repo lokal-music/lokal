@@ -7,7 +7,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { api, peekSettings, wordSyncEnabled as getWordSyncEnabled } from '../api'
 import Waveform from './Waveform'
 import { useAppearanceFlag } from '../appearanceFlags'
-import { trackArtURL } from '../onlineTracks'
+import { trackArtURL, isStreamed } from '../onlineTracks'
+import StreamArtwork from './StreamArtwork'
 import { useMusicVideo, useMusicVideoView } from '../musicVideo'
 import MusicVideoPlayer from './MusicVideoPlayer'
 import VideoOffsetControl from './VideoOffsetControl'
@@ -392,7 +393,11 @@ export default function MiniPlayer({ windowed = false }) {
       ) : <>
       <div className={`flex items-center gap-3 ${windowed ? 'p-4' : 'p-3'}`}>
         {!videoMode && <div className={`${windowed ? 'w-20 h-20' : 'w-16 h-16'} rounded-lg overflow-hidden flex-shrink-0 bg-card`}>
-          {artSrc ? (
+          {isStreamed(currentTrack) ? (
+            <StreamArtwork track={currentTrack} src={artSrc} alt={t("Artwork")}
+              className="w-full h-full object-cover"
+              fallback={<div className="w-full h-full flex items-center justify-center text-subtle text-2xl">-</div>} />
+          ) : artSrc ? (
             <img src={artSrc} alt={t("Artwork")} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-subtle text-2xl">-</div>

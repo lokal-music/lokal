@@ -5,7 +5,7 @@
 
 **Your music, your files, a modern player.** Lokal is a local-first music player built with Electron and React, for people with big local libraries who want the polish of a streaming app without the subscription: word-by-word synced lyrics, official music videos synced to your files, new releases from the artists you follow, listening recaps, recommendations from Last.fm or YouTube Music, smart playlists, an audio-quality checker, and one search bar that finds, streams and downloads.
 
-![Lokal Music](https://img.shields.io/badge/version-14.0.2-blue) ![Electron](https://img.shields.io/badge/Electron-latest-47848F) ![React](https://img.shields.io/badge/React-19-61DAFB) ![License](https://img.shields.io/badge/license-MIT-green) [![Discord](https://img.shields.io/badge/Discord-7289DA?logo=discord&logoColor=white)](https://discord.com/invite/8bUGWChwpG)
+![Lokal Music](https://img.shields.io/badge/version-14.2.0-blue) ![Electron](https://img.shields.io/badge/Electron-latest-47848F) ![React](https://img.shields.io/badge/React-19-61DAFB) ![License](https://img.shields.io/badge/license-MIT-green) [![Discord](https://img.shields.io/badge/Discord-7289DA?logo=discord&logoColor=white)](https://discord.com/invite/8bUGWChwpG)
 
 ![Lokal's home page: mixes built from your listening, the song playing in the side panel, and its audio quality under the artist](docs/screenshots/home.webp)
 
@@ -103,7 +103,7 @@ The search bar at the top covers your own library, then songs that aren't in it 
 
 (*yt-dlp is not included on install; see [Downloader Setup](#downloader-setup)*)
 
-**Addons:** paste an addon's manifest URL in Settings → Addons. Lokal speaks the same addon protocol as Eclipse Music (manifest, `/search`, `/stream`, and `/album` / `/artist` pages when an addon has them), so those addons work as another source in search. It also runs **SpotiFLAC extensions**: add a repository to browse its sources, or install a `.sflx` package. Lokal ships no addons and doesn't host or vouch for any; you're responsible for the ones you add. (*[Ultramax](https://ultramax.vip/eclipse.html) and [LastWave](https://lastwaveaddons.clashprojects.qd.je/) have been tested and work; Tido requires whitelisting, so it isn't compatible.*)
+**Addons:** paste an addon's manifest URL in Settings → Addons. Lokal speaks the same addon protocol as Eclipse Music (manifest, `/search`, `/stream`, and `/album` / `/artist` pages when an addon has them), so those addons work as another source in search. It also runs **SpotiFLAC extensions**: add a repository to browse its sources, or install a `.sflx` package. Lokal ships no addons and doesn't host or vouch for any; you're responsible for the ones you add. (*Compatibility depends on the third-party add-on's protocol and access requirements.*)
 
 **Soulseek:** search and download from Soulseek, where lossless FLAC files are common. Sign in with a Soulseek username and password in **Settings → Integrations → Soulseek** (a new name creates the account) and that's it: Lokal downloads the Soulseek client ([slskd](https://github.com/slskd/slskd)) once, checks it, runs it in the background on this computer only while Lokal is open, and **updates it** from the same place. Optionally share your music folder back. Soulseek is a sharing network and most of what's on it is copyrighted, so only download what you own.
 

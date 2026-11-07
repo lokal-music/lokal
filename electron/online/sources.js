@@ -51,9 +51,9 @@ function fromYouTube(r) {
  * YouTube search through yt-dlp if YouTube Music can't be reached.
  * @param fallbackSearch (query) => Promise<results in the yt shape>, optional
  */
-async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, limit = 10, addonTimeoutMs } = {}) {
+async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, limit = 10, addonTimeoutMs, onDiagnostic } = {}) {
   const key = addons.keyOfProvider(provider)
-  if (key) return { results: await addons.search(db, key, query, { fetchImpl, limit: 20, timeoutMs: addonTimeoutMs }) }
+  if (key) return { results: await addons.search(db, key, query, { fetchImpl, limit: 20, timeoutMs: addonTimeoutMs, onDiagnostic }) }
   if (provider === 'sc') return { results: await sc.searchTracks(query, { ytdlp, limit }) }
   if (provider === 'mono') return { results: await mono.searchTracks(query, { limit, fetchImpl }) }
   try {
@@ -70,7 +70,7 @@ async function search(provider, query, { db, ytdlp, fetchImpl, fallbackSearch, l
 function resolveStream(provider, id, opts = {}) {
   if (!validId(provider, id)) return Promise.reject(new Error('Unknown online song'))
   const key = addons.keyOfProvider(provider)
-  if (key) return addons.resolveStream(opts.db, key, id, { force: opts.force, fetchImpl: opts.addonFetch, signal: opts.signal, timeoutMs: opts.addonTimeoutMs })
+  if (key) return addons.resolveStream(opts.db, key, id, { force: opts.force, download: opts.download, fetchImpl: opts.addonFetch, signal: opts.signal, timeoutMs: opts.addonTimeoutMs, onDiagnostic: opts.onDiagnostic })
   if (provider === 'mono') return mono.resolveStream(id)
   return provider === 'sc' ? sc.resolveStream(id, opts) : yt.resolveStream(id, opts)
 }
@@ -496,7 +496,19 @@ function saveOnlineTracks(db, items = []) {
       track_num: positive(item.track_num ?? item.trackNumber),
       genre: typeof item.genre === 'string' && item.genre.trim() ? item.genre.trim().slice(0, 100) : null,
       isrc: (() => { try { return require('../quality').normalizeIsrc(item.isrc) || null } catch { return null } })(),
-      ...streamQuality(item.quality || item.format),
+      // Keep an explicit codec and resolution from the add-on search response.
+      // The old generic quality parser only received "FLAC", dropping the
+      // 24-bit / 44.1 kHz fields before the player saved its ghost row.
+      ...(() => {
+        const parsed = streamQuality(item.format || item.quality)
+        const bits = Number(item.bit_depth ?? item.bitDepth)
+        const rate = Number(item.sample_rate ?? item.sampleRate)
+        return {
+          ...parsed,
+          bit_depth: Number.isInteger(bits) && bits >= 8 && bits <= 64 ? bits : parsed.bit_depth,
+          sample_rate: Number.isInteger(rate) && rate >= 8000 && rate <= 768000 ? rate : parsed.sample_rate,
+        }
+      })(),
     })
     return get.get(id)
   }))

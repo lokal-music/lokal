@@ -57,6 +57,8 @@ function AddonCard({ addon, onChanged, focused = false }) {
   const [open, setOpen] = useState(focused)
   const cardRef = useRef(null)
   const [values, setValues] = useState(addon.settings || {})
+  const [signingKey, setSigningKey] = useState('')
+  const [clearSigningKey, setClearSigningKey] = useState(false)
   const [busy, setBusy] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
@@ -84,7 +86,12 @@ function AddonCard({ addon, onChanged, focused = false }) {
     catch (error) { setMessage(t(error.message)); return null }
     finally { setBusy(false) }
   }
-  const save = () => run(async () => { const result = await api.addonsSetSettings(addon.key, values); if (!result?.error) { setMessage(t("Settings saved")); onChanged() } return result })
+  const save = () => run(async () => {
+    const keyOption = clearSigningKey ? { signingKey: '' } : signingKey ? { signingKey } : {}
+    const result = await api.addonsSetSettings(addon.key, values, keyOption)
+    if (!result?.error) { setSigningKey(''); setClearSigningKey(false); setMessage(t('Settings saved')); onChanged() }
+    return result
+  })
   const toggle = async () => {
     if (await run(() => api.addonsSetEnabled(addon.key, !addon.enabled))) onChanged()
   }
@@ -136,11 +143,20 @@ function AddonCard({ addon, onChanged, focused = false }) {
           )}
         </div>
       </div>
-      {(addon.settingsSchema.length > 0 || addon.kind === 'mornye') && (
+      {(addon.settingsSchema.length > 0 || addon.kind !== 'mornye') && (
         <div className="mt-3">
           <button onClick={() => setOpen(v => !v)} className="text-xs text-accent hover:underline">{open ? t('Hide settings') : t('Settings & access')}</button>
           {open && (
             <div className="mt-3 space-y-3 border-t border-border pt-3">
+              {addon.kind !== 'mornye' && <div className="space-y-1">
+                <label htmlFor={`addon-signing-key-${addon.key}`} className="text-xs font-medium text-text">{t('HMAC signing key (optional)')}</label>
+                <input id={`addon-signing-key-${addon.key}`} type="password" autoComplete="new-password" spellCheck={false}
+                  value={signingKey} disabled={clearSigningKey} onChange={e => setSigningKey(e.target.value)}
+                  placeholder={addon.hasSigningKey ? t('Configured — enter a replacement') : t('Leave empty for unsigned requests')}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-text outline-none focus:border-accent/50" />
+                {addon.hasSigningKey && <label className="flex items-center gap-2 text-[11px] text-muted"><input type="checkbox" checked={clearSigningKey} onChange={e => { setClearSigningKey(e.target.checked); if (e.target.checked) setSigningKey('') }} />{t('Remove saved HMAC key')}</label>}
+                <p className="text-[11px] text-muted">{t('Used only for signed requests to this add-on. Leave empty to keep the current key, if any.')}</p>
+              </div>}
               {addon.settingsSchema.filter(f => f?.key).map(field => (
                 <SettingField key={field.key} field={field.secret ? { ...field, placeholder: addon.configuredSecrets?.includes(field.key) ? t('Configured — enter a replacement') : field.placeholder } : field} value={values[field.key] ?? field.default} onChange={v => update(field.key, v)} onAction={action} />
               ))}
@@ -266,6 +282,7 @@ export default function AddonsSettings() {
   const [addons, setAddons] = useState(() => peekCache('settings:addons') ?? null)
   usePageReady(addons !== null)
   const [url, setUrl] = useState('')
+  const [installKey, setInstallKey] = useState('')
   const [installing, setInstalling] = useState(false)
   const [message, setMessage] = useState(null) // { error?, text }
 
@@ -288,11 +305,12 @@ export default function AddonsSettings() {
     if (!url.trim()) return
     setInstalling(true)
     setMessage(null)
-    const result = await Promise.resolve(api.addonsInstall(url.trim())).catch(e => ({ error: e.message }))
+    const result = await Promise.resolve(api.addonsInstall(url.trim(), { signingKey: installKey })).catch(e => ({ error: e.message }))
     setInstalling(false)
     if (result?.error) { setMessage({ error: true, text: t(result.error) }); return }
     setMessage({ text: t('{name} installed. It\'s now a source above the online results in search.', { name: result.name }) })
     setUrl('')
+    setInstallKey('')
     onChanged()
   }
 
@@ -318,6 +336,8 @@ export default function AddonsSettings() {
           {installing && <Loader2 size={12} className="animate-spin" />} {t('Install')}
         </button>
       </div>
+      <input aria-label={t('HMAC signing key (optional)')} type="password" autoComplete="new-password" spellCheck={false} value={installKey} onChange={e => setInstallKey(e.target.value)}
+        placeholder={t('Optional HMAC signing key for this add-on')} className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-text outline-none focus:border-accent/50" />
       {message && <p className={`text-xs ${message.error ? 'text-red' : 'text-accent'}`}>{t(message.text)}</p>}
       </div>
       {addons === null ? null : addons.length === 0 ? (

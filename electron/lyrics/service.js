@@ -18,6 +18,8 @@ const { describe } = require('./providers')
 const { finish, isUntimed, assignSides } = require('./postprocess')
 const { stripVoicePrefix } = require('./lrc')
 const translation = require('./translate')
+const { readFlacLyrics } = require('./flacVorbis')
+const { mergePrivateBackground } = require('./providers/local')
 
 const META_VERSION = 2
 const NEGATIVE_TTL_MS = 3 * 24 * 60 * 60 * 1000
@@ -123,6 +125,12 @@ function parseMeta(row) {
 function writeRow(db, trackId, filePath, result, extra = {}) {
   const meta = {
     v: META_VERSION,
+    // The standalone enhanced-LRC backing-voice parser was introduced after
+    // earlier synced local entries were persisted without their background.
+    bgLrcChecked: true,
+    // FLAC's separately stored [bg:] Vorbis tag was previously invisible to
+    // desktop metadata readers. Force one rescan of old local cache rows.
+    vorbisBgChecked: true,
     sync: result?.sync || null,
     duet: !!result?.duet,
     isrc: result?.isrc || null,
@@ -231,6 +239,15 @@ function trustedFilePath(db, trackId) {
 
 // ---------------------------------------------------------------- public API
 
+// A cached or online lead can be the best lyric source while the file stores
+// a separate [bg:] singer. Mobile merges those two sources instead of replacing
+// one with the other. Only the user's DB-validated local FLAC path is read.
+async function withVorbisBacking(result, filePath) {
+  if (!result?.lines?.length || !/\.flac$/i.test(filePath || '')) return result
+  const ownText = await readFlacLyrics(filePath)
+  return ownText ? mergePrivateBackground(result, ownText) : result
+}
+
 function instrumentalResult(db, trackId) {
   if (!trackId) return null
   try {
@@ -294,8 +311,24 @@ async function getLyrics(db, args) {
         } else if (meta.pinned) {
           // An explicit source choice is the user's decision, even when plain.
           const pinned = fromRow(row, meta, db)
-          if (trackId && row.track_id !== trackId) writeRow(db, trackId, filePath, pinned, { attempts: meta.attempts, pinned: true })
-          return pinned
+          const enriched = !meta.vorbisBgChecked ? await withVorbisBacking(pinned, filePath) : pinned
+          if (enriched !== pinned || (!meta.vorbisBgChecked && /\.flac$/i.test(filePath || '')) || (trackId && row.track_id !== trackId)) {
+            // Keep the original imported TTML/LRC for export, not just the
+            // derived visual rows after enriching local FLAC backing vocals.
+            writeRow(db, trackId || row.track_id, filePath || row.file_path, enriched, {
+              attempts: meta.attempts,
+              pinned: true,
+              ...(meta.rawImport != null ? { rawImport: meta.rawImport } : {}),
+            })
+          }
+          return enriched
+        } else if (row.source === 'local' &&
+          (!meta.bgLrcChecked || (!meta.vorbisBgChecked && /\.flac$/i.test(filePath || ''))) &&
+          filePath) {
+          // Existing word-timed local cache rows can be missing every [bg:]
+          // supporting vocal. Re-read the embedded source once after upgrade;
+          // keep the cached result if the file is unavailable or unchanged.
+          cachedLocalLyrics = fromRow(row, meta, db)
         } else if (row.source === 'local' && row.lyrics_type !== 'synced') {
           // The song's own lyrics, saved unsynced: read again, so a file whose
           // timed lyrics were missed before (two lyrics tags, a SYLT frame)
@@ -311,8 +344,16 @@ async function getLyrics(db, args) {
             ? { ...existing, type: 'synced' }
             : existing
         } else {
-          if (trackId && row.track_id !== trackId) writeRow(db, trackId, filePath, fromRow(row, meta, db), { attempts: meta.attempts, pinned: meta.pinned })
-          return fromRow(row, meta, db)
+          const cached = fromRow(row, meta, db)
+          const enriched = !meta.vorbisBgChecked ? await withVorbisBacking(cached, filePath) : cached
+          if (enriched !== cached || !meta.vorbisBgChecked && /\.flac$/i.test(filePath || '') || trackId && row.track_id !== trackId) {
+            writeRow(db, trackId || row.track_id, filePath || row.file_path, enriched, {
+              attempts: meta.attempts,
+              pinned: meta.pinned,
+              ...(meta.rawImport != null ? { rawImport: meta.rawImport } : {}),
+            })
+          }
+          return enriched
         }
       } else if (row.source === 'imported' || String(row.source || '').startsWith('imported')) {
         const upgraded = upgradeLegacy(row)
@@ -325,12 +366,20 @@ async function getLyrics(db, args) {
     }
   }
 
-  const { result, attempts } = await lookup(
+  const { result: discovered, attempts } = await lookup(
     { title, artist, album, duration: Number(duration) || 0, filePath, keepCommaArtists: settings.keepCommaArtists },
     settings,
   )
+  const result = await withVorbisBacking(discovered, filePath)
   if (!trackId) return result
-  const preferred = retainBetterLyrics(cachedLocalLyrics, result)
+  // A newly decoded local file with real backing vocals must supersede the
+  // equally ranked legacy cached lead-only version; quality ranking alone
+  // cannot see that the latter silently omitted the supporting voice.
+  const recoveredBackground = cachedLocalLyrics && result?.source === 'local' &&
+    result.lines?.some(line => line.bgText || line.bgWords?.length) &&
+    !cachedLocalLyrics.lines?.some(line => line.bgText || line.bgWords?.length) &&
+    lyricsQualityRank(result) >= lyricsQualityRank(cachedLocalLyrics)
+  const preferred = recoveredBackground ? result : retainBetterLyrics(cachedLocalLyrics, result)
   if (cachedLocalLyrics && preferred === cachedLocalLyrics) {
     const merged = { ...(cachedLocalLyrics.attempts || {}), ...attempts }
     writeRow(db, trackId, filePath, cachedLocalLyrics, { attempts: merged })

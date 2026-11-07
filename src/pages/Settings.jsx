@@ -33,6 +33,7 @@ import { ARTIST_SOURCES } from '../artistSources'
 import { repairMissingTracks } from '../ghostDownloads'
 import { plural } from '../plural'
 import { readCrossfadeSettings, CROSSFADE_MIN_S } from '../audio/crossfade'
+import { onlineByDefault, setOnlineByDefault } from '../onlineBrowse'
 import { SPEED_MAX, SPEED_MIN, SPEED_STEP, usePlaybackSpeed } from '../playbackSpeed.mjs'
 import SoulseekSignIn from '../components/SoulseekSignIn'
 import { loadMilkDropPresetNames, normalizeEnabledMilkDropPresets } from '../visualizers/milkDropPresets.mjs'
@@ -309,6 +310,7 @@ export default function Settings() {
       })
       .finally(() => setMilkDropPresetsLoading(false))
   }, [showVisualizerMenu, milkDropPresetLoadStarted])
+  const [onlineDefault, setOnlineDefault] = useState(() => onlineByDefault())
   const [showGenreModal, setShowGenreModal] = useState(false)
   const [eqState, setEqState] = useState(() => loadEqState())
   const [showEqModal, setShowEqModal] = useState(false)
@@ -1380,6 +1382,22 @@ activeCategory === 'data' ? usersTried
 
       )}
 
+      {inCategory('library') && (
+      <Section title={t("Album & artist pages")}>
+        <Row label={t("Online mode by default")} desc={t("Open album and artist pages with the online catalogue enabled. You can still change the mode on each page; individual choices are remembered.")}>
+          <button type="button" aria-pressed={onlineDefault}
+            onClick={() => {
+              const next = !onlineDefault
+              setOnlineByDefault(next)
+              setOnlineDefault(next)
+            }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-display uppercase tracking-wider border transition-colors ${onlineDefault ? 'bg-accent/20 border-accent/50 text-accent' : 'border-border text-muted hover:text-white'}`}>
+            {onlineDefault ? t('On') : t('Off')}
+          </button>
+        </Row>
+      </Section>
+      )}
+
       {inCategory('library') && api.isElectron && (
       <Section title={t("Network libraries")}>
         <NetworkShareSettings onConnected={(result) => {
@@ -2133,6 +2151,15 @@ activeCategory === 'data' ? usersTried
       )}
       {inCategory('appearance') && (
       <Section title={t("Home")}>
+        <Row label={t("Home greeting and subheader")} desc={t("Show the personalized greeting and subheader above the Home tabs. Turn this off to save vertical space across Local, Discovery, Flow, Releases, and History.")}>
+          <button type="button"
+            aria-label={t("Show Home greeting and subheader")}
+            aria-pressed={settings.home_greeting !== '0'}
+            onClick={() => set('home_greeting', settings.home_greeting === '0' ? '1' : '0')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-display uppercase tracking-wider border transition-colors ${settings.home_greeting !== '0' ? 'bg-accent/20 border-accent/50 text-accent' : 'border-border text-muted hover:text-white'}`}>
+            {settings.home_greeting !== '0' ? t('On') : t('Off')}
+          </button>
+        </Row>
         <Row label={t("Cover Flow")} desc={t("Show classic iTunes-style Cover Flow on Home → Local. Turn this off to restore the original cylindrical carousel. This choice is independent of Windows animation settings.")}>
           <button type="button"
             aria-label={t("Enable Cover Flow on Home")}

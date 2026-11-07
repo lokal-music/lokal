@@ -137,11 +137,31 @@ function parseEnhancedLRC(text) {
   const offset = readOffset(text)
   const out = []
   const extras = []
+  // Backing rows can be separated from their lead by blank lines or grouped
+  // elsewhere in the LRC. Pair them by audio time once all leads are known.
+  const backingRows = []
   let previous = []
   for (const rawLine of String(text).replace(/\r/g, '').split('\n')) {
     const line = rawLine.trim()
     if (!line) { previous = []; continue }
     if (META_TAG.test(line)) { previous = []; continue }
+
+    // [bg:] rows are independently timed, not metadata or translations. Their
+    // position in the file is unrelated to the lead line they overlap.
+    const backing = line.match(/^\[bg\s*:(.*)\]$/i)
+    if (backing) {
+      WORD_STAMP.lastIndex = 0
+      const first = WORD_STAMP.exec(backing[1])
+      if (first) {
+        const synthetic = `[${first[1]}:${first[2]}.${first[3] || '00'}]${backing[1]}`
+        const parsed = parseEnhancedLRC(
+          `${offset ? `[offset:${Math.round(offset * 1000)}]\n` : ''}${synthetic}`
+        )[0]
+        if (parsed?.text && parsed.words?.length) backingRows.push(parsed)
+      }
+      continue
+    }
+
     LINE_STAMP.lastIndex = 0
     const lm = LINE_STAMP.exec(line)
     if (!lm || lm.index !== 0) {
@@ -186,6 +206,21 @@ function parseEnhancedLRC(text) {
     previous = [clean]
   }
   out.sort((a, b) => a.time - b.time)
+  // Match by the background singer's onset, never by the previous text row.
+  // This works when Mornye groups [bg:] rows, inserts blank lines, or puts
+  // them before the lead. Do not synthesize a new lead that would steal focus.
+  for (const backing of backingRows) {
+    if (!out.length) break
+    const onset = backing.words[0].time
+    let lead = out[0]
+    for (const candidate of out) {
+      if (candidate.time > onset + 0.02) break
+      lead = candidate
+    }
+    lead.bgText = lead.bgText ? `${lead.bgText} ${backing.text}` : backing.text
+    lead.bgWords = [...(lead.bgWords || []), ...backing.words]
+      .sort((a, b) => a.time - b.time)
+  }
   return attachTranslations(out, extras)
 }
 

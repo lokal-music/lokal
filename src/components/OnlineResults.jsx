@@ -13,7 +13,7 @@ import { Music, Pause, Play, Plus, Download, ListEnd, Clock, Heart, Disc3, User,
 import { api } from '../api'
 import { usePlayerStore, useAppStore } from '../store/player'
 import { useShallow } from 'zustand/react/shallow'
-import { sameStream, saveToLibrary } from '../onlineTracks'
+import { isAddonProvider, sameStream, saveToLibrary } from '../onlineTracks'
 import { awaitAtmosOutputRelease, shouldToggleNormalStream } from '../audio/atmosHandoff.mjs'
 import { recentTrackItem, saveRecentItem, saveRecentSearch } from '../searchHistory'
 import SaveToLibraryButton from './SaveToLibraryButton'
@@ -22,6 +22,7 @@ import { atmosDownloadRef, downloadAtmosVersion } from '../atmosDownloads'
 import SoulseekSearch from './SoulseekSearch'
 import DownloadNotices from './DownloadNotices'
 import SourceIcon from './SourceIcon'
+import DiscoveryImage from './DiscoveryImage'
 import AddonSetupNotice from './AddonSetupNotice'
 import { DEFAULT_SEARCH_SOURCES, orderedFindOnSources } from '../findOnSources'
 import { useTranslation } from '../i18n'
@@ -117,8 +118,36 @@ export default function OnlineResults({ query, soulseekFor = null, findOn = null
       let res
       try { res = await api.onlineSearch(q, provider) } catch (e) { res = { error: e.message } }
       if (seq !== seqRef.current) return
-      setResults(Array.isArray(res?.results) ? res.results : [])
-      setError(res?.results?.length ? null : res?.error || null)
+      const rows = Array.isArray(res?.results) ? res.results : []
+      setResults(rows)
+      setError(rows.length ? null : res?.error || null)
+      // LastWave-compatible HTTP addons may omit cover URLs entirely. Match
+      // mobile: resolve missing artwork from the existing desktop metadata
+      // lookup without delaying search or blocking audio. Resolve in small
+      // batches; stale searches must never repaint a newer provider/query.
+      if (isAddonProvider(provider)) {
+        const missing = rows.filter(item => !item.thumbnail && item.artist && item.title).slice(0, 20)
+        void (async () => {
+          for (let offset = 0; offset < missing.length; offset += 4) {
+            const batch = missing.slice(offset, offset + 4)
+            const covers = await api.discoveryArtwork(batch.map(item => ({
+              type: 'track', title: item.title, artist: item.artist,
+            })))
+            if (seq !== seqRef.current) return
+            const found = new Map()
+            batch.forEach((item, index) => {
+              const image = covers?.[index]?.image
+              if (typeof image === 'string' && /^(?:https:\/\/|file:\/\/)/.test(image)) {
+                found.set(`${item.provider}:\u0000${item.id}`, image)
+              }
+            })
+            if (found.size) setResults(current => current.map(item => {
+              const image = found.get(`${item.provider}:\u0000${item.id}`)
+              return image && !item.thumbnail ? { ...item, thumbnail: image } : item
+            }))
+          }
+        })().catch(() => { /* Artwork metadata must never break search or playback. */ })
+      }
       setLoading(false)
     }, DEBOUNCE_MS)
     return () => clearTimeout(t)
@@ -307,7 +336,16 @@ export default function OnlineResults({ query, soulseekFor = null, findOn = null
                   aria-label={t('{action} {title}', { action: t(current && isPlaying ? 'Pause' : 'Play'), title: item.title })}
                   className="relative w-10 h-10 rounded overflow-hidden bg-card flex items-center justify-center text-muted"
                 >
-                  {item.thumbnail ? <img src={item.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" /> : <Music size={14} />}
+                  {isAddonProvider(item.provider)
+                     ? <DiscoveryImage item={item} src={item.thumbnail} lookup
+                         className="w-full h-full object-cover" referrerPolicy="no-referrer"
+                         fallback={<Music size={14} />}
+                         onResolved={image => setResults(current => current.map(row =>
+                           row.provider === item.provider && row.id === item.id && row.thumbnail === item.thumbnail
+                             ? { ...row, thumbnail: image } : row))} />
+                     : item.thumbnail
+                       ? <img src={item.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                       : <Music size={14} />}
                   <span className={`absolute inset-0 flex items-center justify-center bg-black/50 text-white transition-opacity ${current ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                     {current && isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="translate-x-px" />}
                   </span>

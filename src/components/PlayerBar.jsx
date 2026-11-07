@@ -23,6 +23,7 @@ import AudioPipelineModal from './AudioPipelineModal'
 import EqualizerModal from './EqualizerModal'
 import { trackArtURL, isStreamed, streamLabel } from '../onlineTracks'
 import SaveToLibraryButton from './SaveToLibraryButton'
+import StreamArtwork from './StreamArtwork'
 import { TIERS, formatLabel, qualityTagLabel, isSuspect, tierOf, losslessMenuItem } from '../quality'
 import { useFullResolutionTags } from '../resolutionTagPreferences'
 import { atmosDownloadRef, downloadAtmosVersion } from '../atmosDownloads'
@@ -346,7 +347,14 @@ export default function PlayerBar() {
               wait for an exit that never finishes left the old song's cover
               (and title) up for good while songs changed. Layers crossfade. */}
           <AnimatePresence initial={false}>
-            {artSrc ? (
+            {streamed ? (
+              <motion.div key={currentTrack?.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="absolute inset-0">
+                <StreamArtwork track={currentTrack} src={artSrc}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  fallback={<div className="w-full h-full flex items-center justify-center text-subtle text-xl">♪</div>} />
+              </motion.div>
+            ) : artSrc ? (
               <motion.img key={station ? artSrc : currentTrack?.id} src={artSrc}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
                 className="absolute inset-0 w-full h-full object-cover" />

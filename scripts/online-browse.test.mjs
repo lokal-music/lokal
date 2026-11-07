@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { libraryAlbum, loadArtistChannel, loadOnlineAlbum, loadOnlineArtistAlbums, onlineAlbumPath, trackAlbumPath } from '../src/onlineBrowse.js'
+import { isConnected, setConnected, onlineByDefault, setOnlineByDefault, libraryAlbum, loadArtistChannel, loadOnlineAlbum, loadOnlineArtistAlbums, onlineAlbumPath, trackAlbumPath } from '../src/onlineBrowse.js'
 import { classifyOnlineReleases, groupReleases } from '../src/releaseTypes.js'
 import { isContextNavigable, navigateToTrackAlbum } from '../src/playbackContext.js'
 
@@ -191,4 +191,43 @@ test('releases the library has all or part of', () => {
   // Streamed songs aren't in the library.
   assert.equal(releaseOwnership({ title: 'Raise!', track_count: 9 }, counts), null)
   assert.equal(releaseOwnership({ title: 'Gratitude' }, counts), null)
+})
+
+test('album and artist pages use the online default while respecting manual page choices', () => {
+  const previousStorage = globalThis.localStorage
+  const storage = new Map()
+  globalThis.localStorage = {
+    getItem: key => storage.has(key) ? storage.get(key) : null,
+    setItem: (key, value) => storage.set(key, String(value)),
+  }
+  try {
+    // Fresh installs open both kinds of page online.
+    assert.equal(onlineByDefault(), true)
+    assert.equal(isConnected('album:artist|album'), true)
+    assert.equal(isConnected('artist:123'), true)
+    assert.equal(isConnected(''), false)
+
+    setOnlineByDefault(false)
+    assert.equal(onlineByDefault(), false)
+    assert.equal(isConnected('album:artist|album'), false)
+    assert.equal(isConnected('artist:123'), false)
+
+    // Explicit per-page selections survive global default changes.
+    setConnected('album:artist|album', true)
+    assert.equal(isConnected('album:artist|album'), true)
+    setOnlineByDefault(true)
+    setConnected('artist:123', false)
+    assert.equal(isConnected('artist:123'), false)
+    assert.equal(isConnected('album:artist|album'), true)
+    assert.equal(isConnected('artist:new'), true)
+
+    // Existing saved ON selections are retained after upgrading.
+    setOnlineByDefault(false)
+    storage.set('lokal-online-connected', JSON.stringify(['artist:legacy']))
+    assert.equal(isConnected('artist:legacy'), true)
+    assert.equal(isConnected('artist:new'), false)
+  } finally {
+    if (previousStorage === undefined) delete globalThis.localStorage
+    else globalThis.localStorage = previousStorage
+  }
 })

@@ -11,6 +11,8 @@
 //   taskbar_progress        ... > Taskbar > Song progress on the taskbar button
 //   home_cover_flow        Settings > Appearance > Home Carousel: on = iTunes Cover Flow,
 //                          off = original cylindrical carousel (default: on).
+//   home_greeting          Settings > Appearance > Home: show the personalized
+//                          greeting and subheader on all Home tabs (default: on).
 // Numbers (useAppearanceValue):
 //   player_bar_gradient_strength   0-100, how strongly the cover gradient shows
 //   player_bar_gradient_speed      0-100, how fast its colours drift (0: still)
@@ -52,7 +54,7 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
-const KEYS = ['glass_player_bar', 'player_bar_floating', 'player_bar_gradient', 'player_waveform', 'side_panel_visualizer', 'taskbar_progress', 'home_cover_flow']
+const KEYS = ['glass_player_bar', 'player_bar_floating', 'player_bar_gradient', 'player_waveform', 'side_panel_visualizer', 'taskbar_progress', 'home_cover_flow', 'home_greeting']
 const VALUE_KEYS = ['player_bar_gradient_strength', 'player_bar_gradient_speed', 'player_bar_glass_transparency', 'player_bar_shade_transparency', 'app_tabs', 'taskbar_title', 'volume_wheel_step', 'folder_transition', 'radio_buffer_sec', 'radio_config_page_url', 'folder_apps',
   'player_visualizer', 'player_spectrum_bars', 'player_spectrum_bar_width', 'player_spectrum_height', 'player_spectrum_strength', 'player_spectrum_opacity', 'player_spectrum_color', 'player_spectrum_radius',
   'player_center_spectrum_bars', 'player_center_spectrum_bar_width', 'player_center_spectrum_height', 'player_center_spectrum_strength', 'player_center_spectrum_opacity', 'player_center_spectrum_color', 'player_center_spectrum_radius',

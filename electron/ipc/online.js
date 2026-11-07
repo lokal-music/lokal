@@ -102,11 +102,23 @@ async function search(query, provider = 'yt', options = {}) {
       sources.addons.searchable(getDB()).some(addon =>
         addon.provider === provider && addon.kind !== 'mornye')
     const addonTimeoutMs = options?.automatic === true && isHttpAddon ? 3000 : undefined
-    return await sources.search(sources.providerOf(provider) ? provider : 'yt', query, {
+    const startedAt = Date.now()
+    const onDiagnostic = isHttpAddon ? ({ event, ...details }) => {
+      log.info(`[online-addon-search] ${JSON.stringify({ provider, event, ...details })}`)
+    } : undefined
+    onDiagnostic?.({ event: 'search-start', automatic: options?.automatic === true, timeoutMs: addonTimeoutMs || 10000 })
+    const result = await sources.search(sources.providerOf(provider) ? provider : 'yt', query, {
       db: getDB(), ytdlp: findYtDlp(), fetchImpl: auth.fetchImpl,
-      fallbackSearch: youtubeFallback, addonTimeoutMs,
+      fallbackSearch: youtubeFallback, addonTimeoutMs, onDiagnostic,
     })
+    onDiagnostic?.({ event: 'search-finished', count: result?.results?.length || 0,
+      withArtwork: result?.results?.filter(track => !!track.thumbnail).length || 0,
+      durationMs: Date.now() - startedAt })
+    return result
   } catch (e) {
+    if (sources.addons.keyOfProvider(provider)) {
+      log.warn(`[online-addon-search] ${JSON.stringify({ provider, error: safeStreamError(e) })}`)
+    }
     return { error: e.message, results: [] }
   }
 }
@@ -181,6 +193,22 @@ function registerOnlineHandlers(ipcMain) {
   // A misspelt search ("micheal jackson"): the library's spelling, else YouTube Music's.
   ipcMain.handle('online:spelling', (_, query) => spelling(getDB(), query))
   ipcMain.handle('online:artwork', (_, items) => discoveryArtwork(items))
+  // Repair only the stale cover of an existing add-on ghost. Never overwrite
+  // a newly imported file, a user-selected cover, or a changed ghost image.
+  ipcMain.handle('online:repairArtwork', (_, trackId, previous, image) => {
+    try {
+      if (typeof trackId !== 'string' || trackId.length > 200 || typeof image !== 'string' || image.length > 1000) return false
+      const url = new URL(image)
+      if (url.protocol !== 'https:' || url.username || url.password) return false
+      if (previous != null && (typeof previous !== 'string' || previous.length > 1000)) return false
+      const result = getDB().prepare(`
+        UPDATE tracks SET artwork_url = ?
+        WHERE id = ? AND file_path LIKE 'ghost://addon/%'
+          AND COALESCE(artwork_url, '') = ?
+      `).run(image, trackId, previous || '')
+      return result.changes > 0
+    } catch { return false }
+  })
   ipcMain.handle('online:signIn', (event, options) => accountSession.signIn({ mode: options?.mode || 'embedded', onProgress: status => { if (!event.sender.isDestroyed()) event.sender.send('online:signInStatus', status) } }))
   ipcMain.handle('online:cancelSignIn', () => accountSession.cancelSignIn())
   ipcMain.handle('online:disconnect', () => accountSession.disconnect())
@@ -273,13 +301,13 @@ function registerOnlineHandlers(ipcMain) {
     if (!key) return { error: 'Not an addon.' }
     try { return await sources.addons.artist(getDB(), key, id) } catch (e) { return { error: e.message } }
   })
-  ipcMain.handle('addons:install', async (_, url) => {
-    try { return await sources.addons.install(getDB(), url) } catch (e) { return { error: e.message } }
+  ipcMain.handle('addons:install', async (_, url, options) => {
+    try { return await sources.addons.install(getDB(), url, { signingKey: options?.signingKey || '' }) } catch (e) { return { error: e.message } }
   })
   const addonRequest = async work => { try { return await work() } catch (e) { return { error: e.message } } }
   ipcMain.handle('addons:remove', (_, key) => addonRequest(() => sources.addons.remove(getDB(), key)))
   ipcMain.handle('addons:setEnabled', (_, key, enabled) => addonRequest(() => sources.addons.setEnabled(getDB(), key, enabled)))
-  ipcMain.handle('addons:setSettings', (_, key, values) => addonRequest(() => sources.addons.setSettings(getDB(), key, values)))
+  ipcMain.handle('addons:setSettings', (_, key, values, options) => addonRequest(() => sources.addons.setSettings(getDB(), key, values, options)))
   ipcMain.handle('addons:packages', (event, request) => {
     if (event.senderFrame !== event.sender.mainFrame) return { error: 'Addon management requires the main application frame' }
     return addonRequest(() => require('../mornye/api').dispatch(getDB(), request))
@@ -373,15 +401,23 @@ function registerOnlineHandlers(ipcMain) {
   ipcMain.handle('musicVideo:cancelIndex', () => { if (videoIndexJob) videoIndexJob.cancelled = true })
   ipcMain.handle('musicVideo:indexStatus', () => videoIndexStatus)
   ipcMain.handle('online:prepare', async (_, provider, id, force = false, options = {}) => {
+    const diagnostic = streamDiagnostic(provider, id)
+    logAddonStream(diagnostic, 'prepare-start', { forced: !!force, automatic: options?.automatic === true })
     try {
       const key = sources.addons.keyOfProvider(provider)
       if (key && sources.addons.packageService(getDB()).find(key)) return require('../mornye/media').prepare(getDB(), key, id, { force: !!force })
       if (provider === 'yt') await accountSession.credentials()
       // Bound the actual HTTP request, not only the renderer's Promise.race.
       const addonTimeoutMs = key && options?.automatic === true ? 3000 : undefined
-      const stream = await sources.resolveStream(provider, id, { ...streamOptions(), force: !!force, addonTimeoutMs })
+      const stream = await sources.resolveStream(provider, id, { ...streamOptions(), force: !!force, addonTimeoutMs,
+        onDiagnostic: ({ event, ...details }) => logAddonStream(diagnostic, event, details),
+      })
+      logAddonStream(diagnostic, 'prepared', { transport: stream.type || 'url' })
       return { ok: true, preview: !!stream.preview }
-    } catch (e) { return { error: e.message } }
+    } catch (e) {
+      logAddonStream(diagnostic, 'prepare-failed', { error: safeStreamError(e) }, 'warn')
+      return { error: e.message }
+    }
   })
 }
 
@@ -977,6 +1013,7 @@ function registerStreamProtocol(protocol, net) {
       const { res, mime } = await sources.fetchStream(provider, id, {
         ...streamOptions(), range, signal: upstream.signal, fetchImpl,
         onPhase: phase => report(phase),
+        onDiagnostic: ({ event, ...details }) => logAddonStream(diagnostic, event, details),
       })
       const headers = new Headers()
       for (const name of PASS_HEADERS) { const v = res.headers.get(name); if (v) headers.set(name, v) }
